@@ -18,6 +18,7 @@ import { store, nextId, freshMilestones } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 import { matchClauses } from "./policyBot.js";
 import { ASC_CHECKLIST_TEMPLATE, LEC_EVALUATION_TEMPLATE, FVC_ITEMS_TEMPLATE, formatAscReport, formatLecReport, formatFvcReport } from "./dsgForms.js";
+import { extractApplicationFormFields, type ExtractionResult } from "./formExtraction.js";
 
 export class WorkflowError extends Error {}
 
@@ -147,6 +148,24 @@ export function submitApplication(caseId: string, application: ApplicationForm):
   c.stage = "ApplicationIntake";
   store.logActivity(c, "SO", "Application form recorded", application.applicantName);
   return c;
+}
+
+/**
+ * Persists an uploaded Application Form's best-effort extraction result on the case itself (not
+ * just the browser), so an FVC officer/auditor can later see what the intake was based on. Does
+ * NOT submit the ApplicationForm — the SO still reviews and calls submitApplication separately.
+ */
+export function recordApplicationFormUpload(caseId: string, fileName: string, rawText: string): { case: DealerCase; extraction: ExtractionResult } {
+  const c = getCase(caseId);
+  const extraction = extractApplicationFormFields(rawText);
+  c.applicationFormUpload = {
+    fileName,
+    extractedFieldsCount: Object.keys(extraction.fields).length,
+    warnings: extraction.warnings,
+    uploadedAt: new Date().toISOString(),
+  };
+  store.logActivity(c, "SO", "Application form uploaded", `${fileName} — ${c.applicationFormUpload.extractedFieldsCount} field(s) extracted`);
+  return { case: c, extraction };
 }
 
 // Step 4 — ASC / LEC / FVC inspections, in the real DSG Annexure V / W1 / Y formats.

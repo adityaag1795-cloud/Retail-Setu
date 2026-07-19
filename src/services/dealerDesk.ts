@@ -21,6 +21,7 @@ import type {
 } from "./../types.js";
 import { store, nextId } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
+import { matchClauses } from "./policyBot.js";
 
 export class DealerDeskError extends Error {}
 
@@ -69,6 +70,27 @@ export const STAKEHOLDER_LABELS: Record<StakeholderRole, string> = {
   DepotTerminalOfficer: "Depot/Terminal Officer",
 };
 
+/**
+ * Combines the rule-engine `criticality` and the SO's own manual `soPriority` into one severity
+ * rank so the SO's judgment call actually moves the request in Teams/Cockpit, instead of only
+ * showing as a badge on the request's own page. Lower rank = more severe; -1 (Highly Critical)
+ * outranks anything the rule engine alone can produce.
+ */
+const CRITICALITY_RANK: Record<RequestCriticality, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+const SO_PRIORITY_RANK: Record<SoPriority, number> = { HighlyCritical: -1, Critical: 0, HighImportance: 1, MediumImportance: 2, LowImportance: 3 };
+
+export function effectiveSeverityRank(req: Pick<DealerRequest, "criticality" | "soPriority">): number {
+  const a = CRITICALITY_RANK[req.criticality];
+  const b = req.soPriority !== undefined ? SO_PRIORITY_RANK[req.soPriority] : Infinity;
+  return Math.min(a, b);
+}
+
+function taskFieldsForRank(rank: number): { priority: TaskItem["priority"]; urgent: boolean } {
+  if (rank <= 1) return { priority: "High", urgent: true };
+  if (rank === 2) return { priority: "Medium", urgent: false };
+  return { priority: "Low", urgent: false };
+}
+
 function daysSince(dateStr: string): number {
   const then = new Date(dateStr).getTime();
   if (Number.isNaN(then)) return 0;
@@ -114,6 +136,7 @@ function pushMessage(req: DealerRequest, from: DealerRequestMessage["from"], aut
 
 function ensureLinkedTask(req: DealerRequest) {
   const so = [...store.team.values()].find((t) => t.role === "SO");
+  const { priority, urgent } = taskFieldsForRank(effectiveSeverityRank(req));
   const task: TaskItem = {
     id: nextId("TASK"),
     title: `${req.category} — ${req.subject}`,
@@ -122,8 +145,8 @@ function ensureLinkedTask(req: DealerRequest) {
     assignedBy: "System",
     dueDate: new Date().toISOString().slice(0, 10),
     status: "Open",
-    priority: req.criticality === "Critical" || req.criticality === "High" ? "High" : req.criticality === "Medium" ? "Medium" : "Low",
-    urgent: req.criticality === "Critical" || req.criticality === "High",
+    priority,
+    urgent,
     important: true,
     linkedModule: "DealerRequest",
     linkedRecordId: req.id,
@@ -137,8 +160,9 @@ function syncLinkedTask(req: DealerRequest) {
   if (!req.linkedTaskId) return;
   const task = store.tasks.get(req.linkedTaskId);
   if (!task) return;
-  task.urgent = req.criticality === "Critical" || req.criticality === "High";
-  task.priority = req.criticality === "Critical" || req.criticality === "High" ? "High" : req.criticality === "Medium" ? "Medium" : "Low";
+  const { priority, urgent } = taskFieldsForRank(effectiveSeverityRank(req));
+  task.urgent = urgent;
+  task.priority = priority;
   if (req.status === "Resolved") task.status = "Done";
   else if (req.status === "InProgress") task.status = "InProgress";
   else if (req.status === "Escalated") task.status = "Open";
@@ -157,6 +181,7 @@ export async function raiseDealerRequest(input: {
   if (!input.subject || !input.description) throw new DealerDeskError("subject and description are required");
   const { level, reason } = computeCriticality(input);
   const so = [...store.team.values()].find((t) => t.role === "SO");
+  const matchedClauses = matchClauses(`${input.category} ${input.subject} ${input.description}`, 3);
 
   const req: DealerRequest = {
     id: nextId("DREQ"),
@@ -170,6 +195,7 @@ export async function raiseDealerRequest(input: {
     criticality: level,
     criticalityReason: reason,
     soPriority: input.soPriority,
+    citedPolicyClauses: matchedClauses.map((c) => `${c.documentTitle} ${c.clauseNumber}`),
     status: "Open",
     raisedAt: new Date().toISOString(),
     assignedTo: so?.id,
@@ -186,6 +212,7 @@ export async function raiseDealerRequest(input: {
     criticality: req.criticality,
     criticalityReason: req.criticalityReason,
     outletName: outlet.name,
+    matchedClauses,
   });
   pushMessage(req, "AI", "Triage", req.aiTriageNote);
 
@@ -215,22 +242,53 @@ export function setSoPriority(requestId: string, soPriority: SoPriority, setBy: 
   const req = getRequest(requestId);
   req.soPriority = soPriority;
   pushMessage(req, "System", setBy, `Priority set to ${SO_PRIORITY_LABELS[soPriority]}.`);
+  syncLinkedTask(req);
   return req;
+}
+
+/** Real seat for a stakeholder role — seeded in seedTeam so forwarding always has someone to assign to. */
+function stakeholderMember(role: StakeholderRole) {
+  const member = [...store.team.values()].find((t) => t.role === role);
+  if (!member) throw new DealerDeskError(`No team member seeded for stakeholder role ${role}`);
+  return member;
 }
 
 export function forwardRequest(requestId: string, stakeholders: StakeholderRole[], forwardedBy: string, note?: string): DealerRequest {
   const req = getRequest(requestId);
   if (!stakeholders.length) throw new DealerDeskError("at least one stakeholder is required");
+  const { priority, urgent } = taskFieldsForRank(effectiveSeverityRank(req));
+  const taskIds: string[] = [];
+  for (const role of stakeholders) {
+    const member = stakeholderMember(role);
+    const task: TaskItem = {
+      id: nextId("TASK"),
+      title: `Forwarded: ${req.subject}`,
+      description: `${req.description}${note ? `\n\nSO note: ${note}` : ""}`,
+      assignedTo: member.id,
+      assignedBy: forwardedBy,
+      dueDate: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
+      status: "Open",
+      priority,
+      urgent,
+      important: true,
+      linkedModule: "DealerRequest",
+      linkedRecordId: req.id,
+      createdAt: new Date().toISOString(),
+    };
+    store.tasks.set(task.id, task);
+    taskIds.push(task.id);
+  }
   const entry: ForwardingEntry = {
     id: nextId("FWD"),
     stakeholders,
     note,
     forwardedBy,
     forwardedAt: new Date().toISOString(),
+    taskIds,
   };
   req.forwarding.push(entry);
   const names = stakeholders.map((s) => STAKEHOLDER_LABELS[s]).join(", ");
-  pushMessage(req, "SO", forwardedBy, `Forwarded to ${names}.${note ? ` Note: ${note}` : ""}`);
+  pushMessage(req, "SO", forwardedBy, `Forwarded to ${names} — task(s) created in Teams/Cockpit.${note ? ` Note: ${note}` : ""}`);
   return req;
 }
 
@@ -254,8 +312,9 @@ export function resolveRequest(requestId: string, resolvedBy: string, resolution
 }
 
 export function listDealerRequests(): DealerRequest[] {
-  const order: Record<RequestCriticality, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-  return [...store.dealerRequests.values()].sort((a, b) => order[a.criticality] - order[b.criticality] || b.raisedAt.localeCompare(a.raisedAt));
+  return [...store.dealerRequests.values()].sort(
+    (a, b) => effectiveSeverityRank(a) - effectiveSeverityRank(b) || b.raisedAt.localeCompare(a.raisedAt),
+  );
 }
 
 export function getDealerRequest(id: string): DealerRequest {
@@ -266,7 +325,7 @@ export function requestsForOutlet(outletId: string): DealerRequest[] {
   return listDealerRequests().filter((r) => r.outletId === outletId);
 }
 
-/** Critical/High requests not yet resolved — for the Teams "open workflows" and Cockpit highlights. */
+/** Highly-ranked requests (by rule-engine criticality OR SO-assigned priority) not yet resolved. */
 export function criticalOpenRequests(): DealerRequest[] {
-  return listDealerRequests().filter((r) => (r.criticality === "Critical" || r.criticality === "High") && r.status !== "Resolved");
+  return listDealerRequests().filter((r) => effectiveSeverityRank(r) <= 1 && r.status !== "Resolved");
 }

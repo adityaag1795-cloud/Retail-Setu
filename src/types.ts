@@ -421,6 +421,18 @@ export interface DealerCase {
   };
   roster: RosterEntry[];
   application?: ApplicationForm;
+  /**
+   * Persisted record of an uploaded Application Form and its best-effort text extraction —
+   * kept on the case (not just the browser) so an FVC officer/auditor can later see what the
+   * intake was based on. No OCR service is reachable from this environment, so this only works
+   * on text-extractable uploads; see `formExtraction.ts`.
+   */
+  applicationFormUpload?: {
+    fileName: string;
+    extractedFieldsCount: number;
+    warnings: string[];
+    uploadedAt: string;
+  };
   inspections: {
     asc?: AscResult;
     lec?: LecResult;
@@ -476,7 +488,12 @@ export interface AnalyticsAnswer {
 // Module 4 — Teams Communication
 // ---------------------------------------------------------------------------
 
-export type TeamRole = "SO" | "RO" | "RetailHead" | "Dealer";
+/**
+ * Includes the Module 7 stakeholder roles (Manager Engineering, MIS Officer, Finance Officer,
+ * Depot/Terminal Officer) so a forwarded dealer request can be assigned to a real TeamMember and
+ * show up in Teams Communication / SO Cockpit like any other task, not just a thread note.
+ */
+export type TeamRole = "SO" | "RO" | "RetailHead" | "Dealer" | StakeholderRole;
 
 export interface TeamMember {
   id: ID;
@@ -589,6 +606,8 @@ export interface ForwardingEntry {
   note?: string;
   forwardedBy: string;
   forwardedAt: string;
+  /** Real TaskItem(s) created for the forwarded stakeholder(s) — surfaces in Teams/Cockpit, not just this thread. */
+  taskIds: ID[];
 }
 
 export type DealerRequestStatus = "Open" | "InProgress" | "Resolved" | "Escalated";
@@ -617,6 +636,8 @@ export interface DealerRequest {
   criticalityReason: string;
   /** SO-assigned manual priority (set at creation or updated later) — separate from `criticality` above. */
   soPriority?: SoPriority;
+  /** Knowledge Centre clauses matched against category/subject/description, same pattern as file notes. */
+  citedPolicyClauses: string[];
   status: DealerRequestStatus;
   raisedAt: string;
   assignedTo?: ID; // TeamMember id (SO)

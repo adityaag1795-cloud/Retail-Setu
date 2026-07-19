@@ -411,7 +411,10 @@ async function renderCaseDetail(id) {
         <label>Upload dealer's Application Form (optional — best-effort field extraction, text-based files only; no OCR service is available offline, so scanned images won't extract)
           <input id="application-upload" type="file" accept=".txt,.md,.pdf,.docx" />
         </label>
-        <div id="application-upload-warnings" class="muted"></div>
+        ${c.applicationFormUpload
+            ? `<p class="muted">Uploaded: <strong>${escapeHtml(c.applicationFormUpload.fileName)}</strong> — ${c.applicationFormUpload.extractedFieldsCount} field(s) extracted, ${c.applicationFormUpload.uploadedAt.slice(0, 19).replace("T", " ")}. This is saved on the case for later reference.</p>`
+            : ""}
+        <div id="application-upload-warnings" class="muted">${c.applicationFormUpload?.warnings.map((w) => `<p>${escapeHtml(w)}</p>`).join("") ?? ""}</div>
       </div>
       <form id="application-form" class="form">
         <p class="muted">Field set mirrors the real Dealer Selection Guidelines 2023 Appendix-IA/IB application form. These fields auto-populate the ASC/LEC/FVC checklists below — enter them once here.</p>
@@ -1451,6 +1454,9 @@ async function renderDealerRequestDetail(id) {
 
       <h3>AI triage note</h3>
       <pre class="ai-output">${escapeHtml(r.aiTriageNote)}</pre>
+      ${r.citedPolicyClauses?.length
+        ? `<p class="muted">Knowledge Centre clauses cited: ${r.citedPolicyClauses.map(escapeHtml).join("; ")}</p>`
+        : `<p class="muted">No Knowledge Centre clause matched this request — add a ${escapeHtml(r.category)}-specific policy clause in Module 6 to have it cited here automatically.</p>`}
 
       <h3>Thread</h3>
       <ul class="log">${r.thread
@@ -1521,7 +1527,7 @@ async function renderDealerRequestDetail(id) {
         }
         const data = formToObject(form);
         await api.post(`/dealer-requests/${id}/forward`, { stakeholders, forwardedBy: data.forwardedBy, note: data.note || undefined });
-        toast("Forwarded");
+        toast("Forwarded — task(s) created, visible in Teams Communication / SO Cockpit");
         await renderDealerRequestDetail(id);
     }));
     on("#followup-form", (el) => el.addEventListener("submit", async (e) => {

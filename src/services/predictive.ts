@@ -1,5 +1,5 @@
-import type { Outlet, SalesRecord, TankStock, AnalyticsAnswer } from "../types.js";
-import { store } from "../store.js";
+import type { Outlet, SalesRecord, TankStock, AnalyticsAnswer, TaskItem } from "../types.js";
+import { store, nextId } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 
 const LOOKBACK_DAYS = 60;
@@ -100,6 +100,62 @@ export function dailySummary() {
     highMsLowHsd: highMsLowHsdOutlets().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, msKL: x.msKL, hsdKL: x.hsdKL })),
     lowOnStockToday: outletsLowOnStock().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, products: x.products })),
   };
+}
+
+function hasOpenTask(outletId: string, title: string): boolean {
+  return [...store.tasks.values()].some(
+    (t) => t.linkedModule === "Outlet" && t.linkedRecordId === outletId && t.title === title && t.status !== "Done",
+  );
+}
+
+function createOutletTask(outlet: Outlet, title: string, description: string, priority: TaskItem["priority"], urgent: boolean) {
+  const so = [...store.team.values()].find((t) => t.role === "SO");
+  if (!so) return;
+  const task: TaskItem = {
+    id: nextId("TASK"),
+    title,
+    description,
+    assignedTo: so.id,
+    assignedBy: "System",
+    dueDate: new Date().toISOString().slice(0, 10),
+    status: "Open",
+    priority,
+    urgent,
+    important: true,
+    linkedModule: "Outlet",
+    linkedRecordId: outlet.id,
+    createdAt: new Date().toISOString(),
+  };
+  store.tasks.set(task.id, task);
+}
+
+/**
+ * Closes the loop from "Module 3 noticed something" to "it's a tracked task" — the same pattern
+ * already used for dealer requests and stuck milestones, applied to persistent predictive
+ * signals instead of leaving them as a page the SO has to remember to check. Idempotent: run it
+ * as often as you like (called whenever Module 3 or the Cockpit is opened) — it only creates a
+ * task once per still-open signal, and a new one only after the previous task is resolved.
+ */
+export function syncPredictiveAlerts(): void {
+  for (const outlet of dryOutletsToday()) {
+    const title = `Dry outlet — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(outlet, title, `${outlet.name} is dry today per the live stock/sales feed — check tanker scheduling.`, "High", true);
+    }
+  }
+  for (const { outlet, actualKL, taAverageKL } of outletsBelowTA()) {
+    if (taAverageKL <= 0 || actualKL >= taAverageKL * 0.8) continue; // only meaningfully below, not noise
+    const title = `Below TA average — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(
+        outlet,
+        title,
+        `${outlet.name}: 30-day throughput ${actualKL} KL vs TA average ${taAverageKL} KL (${Math.round((actualKL / taAverageKL) * 100)}%) — investigate.`,
+        "Medium",
+        false,
+      );
+    }
+  }
 }
 
 /** "Ask anything" analytical query — rule-based intent matching over the SO's most common questions. */

@@ -1,9 +1,10 @@
 import type { Router } from "../httpUtil.js";
 import { sendJson, readJsonBody, ApiError } from "../httpUtil.js";
-import { dailySummary, askAnalytics } from "../services/predictive.js";
+import { dailySummary, askAnalytics, syncPredictiveAlerts } from "../services/predictive.js";
 
 export function registerAnalyticsRoutes(router: Router) {
   router.get("/api/analytics/summary", (_req, res) => {
+    syncPredictiveAlerts();
     sendJson(res, 200, dailySummary());
   });
 

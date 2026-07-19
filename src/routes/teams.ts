@@ -1,0 +1,99 @@
+import type { Router } from "../httpUtil.js";
+import { sendJson, readJsonBody, ApiError } from "../httpUtil.js";
+import { store, nextId } from "../store.js";
+import type { TaskItem, MemoryNote } from "../types.js";
+import { stuckMilestones } from "../services/dealerWorkflow.js";
+import { criticalOpenRequests } from "../services/dealerDesk.js";
+
+export function registerTeamRoutes(router: Router) {
+  router.get("/api/team", (_req, res) => {
+    sendJson(res, 200, [...store.team.values()]);
+  });
+
+  router.get("/api/tasks", (_req, res) => {
+    sendJson(res, 200, [...store.tasks.values()].sort((a, b) => a.dueDate.localeCompare(b.dueDate)));
+  });
+
+  router.post("/api/tasks", async (req, res) => {
+    const body = await readJsonBody<Partial<TaskItem>>(req);
+    if (!body.title || !body.assignedTo || !body.assignedBy || !body.dueDate) {
+      throw new ApiError(400, "title, assignedTo, assignedBy and dueDate are required");
+    }
+    const task: TaskItem = {
+      id: nextId("TASK"),
+      title: body.title,
+      description: body.description ?? "",
+      assignedTo: body.assignedTo,
+      assignedBy: body.assignedBy,
+      dueDate: body.dueDate,
+      status: body.status ?? "Open",
+      priority: body.priority ?? "Medium",
+      urgent: body.urgent ?? false,
+      important: body.important ?? false,
+      linkedModule: body.linkedModule,
+      linkedRecordId: body.linkedRecordId,
+      createdAt: new Date().toISOString(),
+    };
+    store.tasks.set(task.id, task);
+    sendJson(res, 201, task);
+  });
+
+  router.put("/api/tasks/:id", async (req, res, params) => {
+    const task = store.tasks.get(params["id"]!);
+    if (!task) throw new ApiError(404, "Task not found");
+    const body = await readJsonBody<Partial<TaskItem>>(req);
+    Object.assign(task, body);
+    sendJson(res, 200, task);
+  });
+
+  router.get("/api/kpis", (_req, res) => {
+    sendJson(res, 200, [...store.kpis.values()]);
+  });
+
+  router.get("/api/memory-notes", (_req, res) => {
+    sendJson(res, 200, [...store.memoryNotes.values()].sort((a, b) => b.date.localeCompare(a.date)));
+  });
+
+  router.post("/api/memory-notes", async (req, res) => {
+    const body = await readJsonBody<Partial<MemoryNote>>(req);
+    if (!body.text || !body.author) throw new ApiError(400, "text and author are required");
+    const note: MemoryNote = {
+      id: nextId("NOTE"),
+      author: body.author,
+      date: new Date().toISOString(),
+      text: body.text,
+      tags: body.tags ?? [],
+    };
+    store.memoryNotes.set(note.id, note);
+    sendJson(res, 201, note);
+  });
+
+  // "Open workflows & proposals awaiting approval" summary for the team-communication view.
+  router.get("/api/teams/open-workflows", (_req, res) => {
+    const cases = [...store.dealerCases.values()].filter((c) => c.stage !== "Commissioned");
+    const caseProposals = [...store.dealerCases.values()]
+      .filter((c) => (c.fileNote && c.fileNote.status === "Draft") || (c.budget && c.budget.status === "Submitted"))
+      .map((c) => ({
+        caseId: c.id,
+        stretchName: c.stretchName,
+        awaiting: c.fileNote?.status === "Draft" ? "File note approval" : "Budget approval",
+      }));
+    const canopyProposals = [...store.outlets.values()]
+      .filter((o) => o.canopyRequest && !o.canopyRequest.soDecision)
+      .map((o) => ({ outletId: o.id, outletName: o.name, awaiting: "Canopy request decision" }));
+    sendJson(res, 200, {
+      openCases: cases.map((c) => ({ id: c.id, stretchName: c.stretchName, stage: c.stage })),
+      proposalsAwaitingApproval: caseProposals,
+      canopyProposalsAwaitingApproval: canopyProposals,
+      stuckMilestones: stuckMilestones(),
+      criticalDealerRequests: criticalOpenRequests().map((r) => ({
+        id: r.id,
+        outletId: r.outletId,
+        category: r.category,
+        subject: r.subject,
+        criticality: r.criticality,
+        status: r.status,
+      })),
+    });
+  });
+}

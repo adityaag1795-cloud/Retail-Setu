@@ -1,0 +1,20 @@
+{
+  "name": "retail-ops-prototype",
+  "version": "0.1.0",
+  "description": "Working TypeScript prototype for the Retail Network Ops platform (outlet lifecycle, dealer selection, predictive analytics, team ops, SO cockpit, policy knowledge centre).",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
+    "start": "node dist/server.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^6.0.0"
+  }
+}

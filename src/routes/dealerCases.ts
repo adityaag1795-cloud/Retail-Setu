@@ -2,6 +2,7 @@ import type { Router } from "../httpUtil.js";
 import { sendJson, readJsonBody, ApiError } from "../httpUtil.js";
 import * as wf from "../services/dealerWorkflow.js";
 import { generateSimplePdf } from "../services/pdfGen.js";
+import { extractApplicationFormFields } from "../services/formExtraction.js";
 
 async function wrap<T>(fn: () => T | Promise<T>): Promise<T> {
   try {
@@ -65,6 +66,18 @@ export function registerDealerCaseRoutes(router: Router) {
   router.post("/api/cases/:id/application", async (req, res, params) => {
     const body = await readJsonBody<Parameters<typeof wf.submitApplication>[1]>(req);
     sendJson(res, 200, await wrap(() => wf.submitApplication(params["id"]!, body)));
+  });
+
+  // Best-effort field extraction from an uploaded Application Form (text-based only — no OCR
+  // service is reachable from this environment). Returns suggested field values for the SO to
+  // review; does not write anything to the case. Actual submission still goes through
+  // POST /api/cases/:id/application above.
+  router.post("/api/cases/:id/application/extract", async (req, res, params) => {
+    // params.id validated implicitly by the case existing when the SO later submits; this
+    // endpoint is stateless w.r.t. the case, it only runs extraction on the supplied text.
+    void params;
+    const body = await readJsonBody<{ text: string; fileName?: string }>(req);
+    sendJson(res, 200, extractApplicationFormFields(body.text ?? ""));
   });
 
   router.post("/api/cases/:id/inspections/asc", async (req, res, params) => {

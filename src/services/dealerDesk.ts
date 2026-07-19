@@ -8,7 +8,17 @@
  * to the SO via a linked SO Cockpit / Teams Communication task so it's
  * highlighted by actual urgency rather than buried in a list.
  */
-import type { DealerRequest, DealerRequestCategory, DealerRequestMessage, DealerRequestStatus, RequestCriticality, TaskItem } from "./../types.js";
+import type {
+  DealerRequest,
+  DealerRequestCategory,
+  DealerRequestMessage,
+  DealerRequestStatus,
+  ForwardingEntry,
+  RequestCriticality,
+  SoPriority,
+  StakeholderRole,
+  TaskItem,
+} from "./../types.js";
 import { store, nextId } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 
@@ -41,6 +51,23 @@ const CATEGORY_BASE_CRITICALITY: Record<DealerRequestCategory, RequestCriticalit
 };
 
 const URGENT_TERMS = ["urgent", "loss of business", "shutdown", "safety", "fire", "leak", "total outage", "not working at all", "no solution", "still not resolved"];
+
+export const SO_PRIORITY_LEVELS: SoPriority[] = ["HighlyCritical", "Critical", "HighImportance", "MediumImportance", "LowImportance"];
+export const SO_PRIORITY_LABELS: Record<SoPriority, string> = {
+  HighlyCritical: "Highly Critical",
+  Critical: "Critical",
+  HighImportance: "High Importance",
+  MediumImportance: "Medium Importance",
+  LowImportance: "Low Importance",
+};
+
+export const STAKEHOLDER_ROLES: StakeholderRole[] = ["ManagerEngineering", "MISOfficer", "FinanceOfficer", "DepotTerminalOfficer"];
+export const STAKEHOLDER_LABELS: Record<StakeholderRole, string> = {
+  ManagerEngineering: "Manager Engineering",
+  MISOfficer: "MIS Officer",
+  FinanceOfficer: "Finance Officer",
+  DepotTerminalOfficer: "Depot/Terminal Officer",
+};
 
 function daysSince(dateStr: string): number {
   const then = new Date(dateStr).getTime();
@@ -124,6 +151,7 @@ export async function raiseDealerRequest(input: {
   description: string;
   externalReferenceNo?: string;
   externalRaisedDate?: string;
+  soPriority?: SoPriority;
 }): Promise<DealerRequest> {
   const outlet = outletOrThrow(input.outletId);
   if (!input.subject || !input.description) throw new DealerDeskError("subject and description are required");
@@ -141,11 +169,13 @@ export async function raiseDealerRequest(input: {
     externalRaisedDate: input.externalRaisedDate,
     criticality: level,
     criticalityReason: reason,
+    soPriority: input.soPriority,
     status: "Open",
     raisedAt: new Date().toISOString(),
     assignedTo: so?.id,
     aiTriageNote: "",
     thread: [],
+    forwarding: [],
   };
 
   pushMessage(req, "Dealer", req.dealerName, input.description);
@@ -178,6 +208,29 @@ export function addSoResponse(requestId: string, responderName: string, text: st
   if (newStatus) req.status = newStatus;
   else if (req.status === "Open") req.status = "InProgress";
   syncLinkedTask(req);
+  return req;
+}
+
+export function setSoPriority(requestId: string, soPriority: SoPriority, setBy: string): DealerRequest {
+  const req = getRequest(requestId);
+  req.soPriority = soPriority;
+  pushMessage(req, "System", setBy, `Priority set to ${SO_PRIORITY_LABELS[soPriority]}.`);
+  return req;
+}
+
+export function forwardRequest(requestId: string, stakeholders: StakeholderRole[], forwardedBy: string, note?: string): DealerRequest {
+  const req = getRequest(requestId);
+  if (!stakeholders.length) throw new DealerDeskError("at least one stakeholder is required");
+  const entry: ForwardingEntry = {
+    id: nextId("FWD"),
+    stakeholders,
+    note,
+    forwardedBy,
+    forwardedAt: new Date().toISOString(),
+  };
+  req.forwarding.push(entry);
+  const names = stakeholders.map((s) => STAKEHOLDER_LABELS[s]).join(", ");
+  pushMessage(req, "SO", forwardedBy, `Forwarded to ${names}.${note ? ` Note: ${note}` : ""}`);
   return req;
 }
 

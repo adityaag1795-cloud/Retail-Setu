@@ -169,12 +169,16 @@ async function renderOutletDetail(id: string) {
       </table>
 
       <h3>Fixed Assets</h3>
-      <p>
+      ${
+        report.fixedAssetSummary.count
+          ? `<p>
         Total Invested: <strong>Rs. ${report.fixedAssetSummary.totalInvested.toLocaleString("en-IN")}</strong>
         &nbsp;|&nbsp; Total Depreciation: <strong>Rs. ${report.fixedAssetSummary.totalDepreciation.toLocaleString("en-IN")}</strong>
         &nbsp;|&nbsp; Net Book Value: <strong>Rs. ${report.fixedAssetSummary.totalNetBookValue.toLocaleString("en-IN")}</strong>
         &nbsp;(${report.fixedAssetSummary.count} item(s))
-      </p>
+      </p>`
+          : `<p class="muted">No fixed-asset ledger (SAP FAIL) on file for this outlet yet — not a data error, just no ledger export loaded for this SAP code.</p>`
+      }
       <p><a class="btn btn--sm" href="#/outlets/${o.id}/fixed-assets">View itemised fixed asset report &rarr;</a></p>
 
       <h3>Sales snapshot (Module 3 link)</h3>
@@ -265,11 +269,15 @@ async function renderOutletFixedAssets(id: string) {
       <a href="#/outlets/${id}">&larr; ${escapeHtml(data.outlet.name)}</a>
       <h2>Fixed Asset Report — ${escapeHtml(data.outlet.name)}</h2>
       <p class="muted">SAP FAIL (Fixed Asset Individual Listing) format.</p>
-      <p>
+      ${
+        s.count
+          ? `<p>
         Total Invested: <strong>Rs. ${s.totalInvested.toLocaleString("en-IN")}</strong>
         &nbsp;|&nbsp; Total Depreciation: <strong>Rs. ${s.totalDepreciation.toLocaleString("en-IN")}</strong>
         &nbsp;|&nbsp; Net Book Value: <strong>Rs. ${s.totalNetBookValue.toLocaleString("en-IN")}</strong>
-      </p>
+      </p>`
+          : `<p class="muted">No fixed-asset ledger (SAP FAIL) on file for this SAP code yet.</p>`
+      }
       <table class="table">
         <thead><tr><th>Asset Class</th><th>Description</th><th>Gross Block</th><th>Depreciation Reserve</th><th>Net Book Value</th><th>Useful Life</th><th>Capitalized On</th></tr></thead>
         <tbody>
@@ -452,7 +460,13 @@ async function renderCaseDetail(id: string) {
             .filter(([k]) => k !== "otherFields")
             .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v as string)}</td></tr>`)
             .join("")}</tbody></table>`
-        : `<form id="application-form" class="form">
+        : `<div class="form">
+        <label>Upload dealer's Application Form (optional — best-effort field extraction, text-based files only; no OCR service is available offline, so scanned images won't extract)
+          <input id="application-upload" type="file" accept=".txt,.md,.pdf,.docx" />
+        </label>
+        <div id="application-upload-warnings" class="muted"></div>
+      </div>
+      <form id="application-form" class="form">
         <p class="muted">Field set mirrors the real Dealer Selection Guidelines 2023 Appendix-IA/IB application form. These fields auto-populate the ASC/LEC/FVC checklists below — enter them once here.</p>
         <label>Application No. <input name="applicationNo" placeholder="HPC..." /></label>
         <label>Applicant name <input name="applicantName" required /></label>
@@ -1076,6 +1090,25 @@ function wireCaseHandlers(c: any) {
     }),
   );
 
+  on("#application-upload", (el) =>
+    el.addEventListener("change", async (e) => {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const result = await api.post(`/cases/${c.id}/application/extract`, { text, fileName: file.name });
+      const warningsEl = document.querySelector("#application-upload-warnings");
+      if (warningsEl) warningsEl.innerHTML = result.warnings.map((w: string) => `<p>${escapeHtml(w)}</p>`).join("");
+      const form = document.querySelector("#application-form") as HTMLFormElement | null;
+      if (!form) return;
+      for (const [field, value] of Object.entries(result.fields)) {
+        const control = form.elements.namedItem(field) as HTMLInputElement | HTMLSelectElement | null;
+        if (control) control.value = String(value);
+      }
+      if (Object.keys(result.fields).length) toast(`Pre-filled ${Object.keys(result.fields).length} field(s) — review before saving`);
+    }),
+  );
+
   on("#gen-filenote", (el) =>
     el.addEventListener("click", async () => {
       await api.post(`/cases/${c.id}/file-note`);
@@ -1455,6 +1488,27 @@ const DEALER_REQUEST_CATEGORIES = [
   { value: "Other", label: "Other" },
 ];
 
+const SO_PRIORITY_OPTIONS = [
+  { value: "HighlyCritical", label: "Highly Critical" },
+  { value: "Critical", label: "Critical" },
+  { value: "HighImportance", label: "High Importance" },
+  { value: "MediumImportance", label: "Medium Importance" },
+  { value: "LowImportance", label: "Low Importance" },
+];
+
+const STAKEHOLDER_OPTIONS = [
+  { value: "ManagerEngineering", label: "Manager Engineering" },
+  { value: "MISOfficer", label: "MIS Officer" },
+  { value: "FinanceOfficer", label: "Finance Officer" },
+  { value: "DepotTerminalOfficer", label: "Depot/Terminal Officer" },
+];
+
+function soPriorityBadge(soPriority?: string): string {
+  if (!soPriority) return "";
+  const label = SO_PRIORITY_OPTIONS.find((p) => p.value === soPriority)?.label ?? soPriority;
+  return `<span class="badge badge--${soPriority.toLowerCase()}">SO priority: ${escapeHtml(label)}</span>`;
+}
+
 function requestRaiseForm(outlets: any[], outletId?: string): string {
   return `
     <form id="dealer-request-form" class="form">
@@ -1468,6 +1522,12 @@ function requestRaiseForm(outlets: any[], outletId?: string): string {
       <label>Description <textarea name="description" required placeholder="e.g. ROMMS complaint logged 5 days ago, no solution yet"></textarea></label>
       <label>External reference no. (optional — e.g. ROMMS complaint no.) <input name="externalReferenceNo" /></label>
       <label>Date originally raised (optional — drives SLA-based criticality) <input name="externalRaisedDate" type="date" /></label>
+      <label>SO priority (optional — your own call, separate from the auto-computed criticality below)
+        <select name="soPriority">
+          <option value="">Not set</option>
+          ${SO_PRIORITY_OPTIONS.map((p) => `<option value="${p.value}">${escapeHtml(p.label)}</option>`).join("")}
+        </select>
+      </label>
       <button type="submit" class="btn">Raise request</button>
     </form>`;
 }
@@ -1480,6 +1540,7 @@ function wireRequestRaiseForm(onDone: (id: string) => void) {
     const data = formToObject(e.target as HTMLFormElement) as any;
     if (!data.externalReferenceNo) delete data.externalReferenceNo;
     if (!data.externalRaisedDate) delete data.externalRaisedDate;
+    if (!data.soPriority) delete data.soPriority;
     const created = await api.post("/dealer-requests", data);
     toast("Request raised — AI triage note generated");
     onDone(created.id);
@@ -1500,12 +1561,13 @@ async function renderDealerDesk() {
 
       <h3>All requests</h3>
       <table class="table">
-        <thead><tr><th>Criticality</th><th>Category</th><th>Subject</th><th>Outlet</th><th>Status</th><th>Raised</th><th></th></tr></thead>
+        <thead><tr><th>Criticality</th><th>SO Priority</th><th>Category</th><th>Subject</th><th>Outlet</th><th>Status</th><th>Raised</th><th></th></tr></thead>
         <tbody>${
           requests
             .map(
               (r: any) => `<tr>
           <td><span class="badge badge--${r.criticality.toLowerCase()}">${escapeHtml(r.criticality)}</span></td>
+          <td>${soPriorityBadge(r.soPriority) || '<span class="muted">Not set</span>'}</td>
           <td>${escapeHtml(r.category)}</td>
           <td>${escapeHtml(r.subject)}</td>
           <td><a href="#/outlets/${r.outletId}">${escapeHtml(outletName(r.outletId))}</a></td>
@@ -1514,7 +1576,7 @@ async function renderDealerDesk() {
           <td><a href="#/dealer-desk/${r.id}">Open &rarr;</a></td>
         </tr>`,
             )
-            .join("") || "<tr><td colspan='7'>No requests raised yet.</td></tr>"
+            .join("") || "<tr><td colspan='8'>No requests raised yet.</td></tr>"
         }</tbody>
       </table>
     </section>`;
@@ -1535,12 +1597,45 @@ async function renderDealerRequestDetail(id: string) {
       <p>
         <span class="badge badge--${r.criticality.toLowerCase()}">${escapeHtml(r.criticality)}</span>
         <span class="badge badge--${r.status.toLowerCase()}">${escapeHtml(r.status)}</span>
+        ${soPriorityBadge(r.soPriority)}
         ${escapeHtml(r.category)} · <a href="#/outlets/${r.outletId}">${escapeHtml(outlet.name)}</a> · Dealer: ${escapeHtml(r.dealerName)}
       </p>
       <p class="muted">Raised: ${r.raisedAt.slice(0, 19).replace("T", " ")}${r.externalReferenceNo ? ` · Ext. ref: ${escapeHtml(r.externalReferenceNo)}` : ""}${r.externalRaisedDate ? ` · Originally raised: ${escapeHtml(r.externalRaisedDate)}` : ""}</p>
 
       <h3>Why this criticality?</h3>
       <p>${escapeHtml(r.criticalityReason)}</p>
+
+      <h3>SO priority</h3>
+      <form id="priority-form" class="form--inline">
+        <select name="soPriority">
+          <option value="">Not set</option>
+          ${SO_PRIORITY_OPTIONS.map((p) => `<option value="${p.value}" ${r.soPriority === p.value ? "selected" : ""}>${escapeHtml(p.label)}</option>`).join("")}
+        </select>
+        <input name="setBy" placeholder="Your name" required />
+        <button type="submit" class="btn">Set priority</button>
+      </form>
+
+      <h3>Forward to stakeholder(s)</h3>
+      ${
+        r.forwarding.length
+          ? `<ul class="log">${r.forwarding
+              .map(
+                (f: any) =>
+                  `<li><span class="muted">${f.forwardedAt.slice(0, 19).replace("T", " ")}</span> — <strong>${escapeHtml(f.forwardedBy)}</strong> forwarded to ${f.stakeholders.map((s: string) => escapeHtml(STAKEHOLDER_OPTIONS.find((o) => o.value === s)?.label ?? s)).join(", ")}${f.note ? `: ${escapeHtml(f.note)}` : ""}</li>`,
+              )
+              .join("")}</ul>`
+          : `<p class="muted">Not forwarded to any stakeholder yet.</p>`
+      }
+      <form id="forward-form" class="form">
+        <label>Stakeholder(s)
+          <span class="form--inline">
+            ${STAKEHOLDER_OPTIONS.map((s) => `<label><input type="checkbox" name="stakeholder" value="${s.value}" /> ${escapeHtml(s.label)}</label>`).join("")}
+          </span>
+        </label>
+        <label>Note (optional) <input name="note" /></label>
+        <label>Your name <input name="forwardedBy" required /></label>
+        <button type="submit" class="btn">Forward</button>
+      </form>
 
       <h3>AI triage note</h3>
       <pre class="ai-output">${escapeHtml(r.aiTriageNote)}</pre>
@@ -1597,6 +1692,36 @@ async function renderDealerRequestDetail(id: string) {
     const el = document.querySelector(sel);
     if (el) handler(el);
   };
+
+  on("#priority-form", (el) =>
+    el.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const data = formToObject(e.target as HTMLFormElement) as any;
+      if (!data.soPriority) {
+        toast("Pick a priority level first");
+        return;
+      }
+      await api.post(`/dealer-requests/${id}/priority`, data);
+      toast("Priority updated");
+      await renderDealerRequestDetail(id);
+    }),
+  );
+
+  on("#forward-form", (el) =>
+    el.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target as HTMLFormElement;
+      const stakeholders = [...form.querySelectorAll('[name="stakeholder"]:checked')].map((el) => (el as HTMLInputElement).value);
+      if (!stakeholders.length) {
+        toast("Pick at least one stakeholder");
+        return;
+      }
+      const data = formToObject(form) as any;
+      await api.post(`/dealer-requests/${id}/forward`, { stakeholders, forwardedBy: data.forwardedBy, note: data.note || undefined });
+      toast("Forwarded");
+      await renderDealerRequestDetail(id);
+    }),
+  );
 
   on("#followup-form", (el) =>
     el.addEventListener("submit", async (e) => {

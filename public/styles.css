@@ -113,6 +113,12 @@ a { color: var(--accent); }
 .badge--resolved { background: var(--accent-2); color: #06251a; border: none; }
 .badge--escalated { background: var(--danger); color: white; border: none; }
 
+/* Module 7 — SO-assigned priority (separate from the rule-engine criticality above) */
+.badge--highlycritical { background: var(--danger); color: white; border: none; }
+.badge--highimportance { background: var(--warn); color: #3a2400; border: none; }
+.badge--mediumimportance { background: var(--accent); color: white; border: none; }
+.badge--lowimportance { background: var(--panel); }
+
 .table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
 .table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .table th { color: var(--muted); font-weight: 600; width: 220px; }

@@ -573,6 +573,24 @@ export type DealerRequestCategory = "ROMMS" | "ITPS" | "SMS" | "MarketIntelligen
 
 export type RequestCriticality = "Critical" | "High" | "Medium" | "Low";
 
+/**
+ * Manual priority the Sales Officer assigns when creating (or later reviewing) a request —
+ * distinct from `criticality` above, which is always the explainable rule-engine's own
+ * assessment and is never overwritten by this field.
+ */
+export type SoPriority = "HighlyCritical" | "Critical" | "HighImportance" | "MediumImportance" | "LowImportance";
+
+/** Stakeholders an SO can forward a dealer request to for action, beyond their own resolution. */
+export type StakeholderRole = "ManagerEngineering" | "MISOfficer" | "FinanceOfficer" | "DepotTerminalOfficer";
+
+export interface ForwardingEntry {
+  id: ID;
+  stakeholders: StakeholderRole[];
+  note?: string;
+  forwardedBy: string;
+  forwardedAt: string;
+}
+
 export type DealerRequestStatus = "Open" | "InProgress" | "Resolved" | "Escalated";
 
 export interface DealerRequestMessage {
@@ -597,12 +615,16 @@ export interface DealerRequest {
   criticality: RequestCriticality;
   /** Explainable rule breakdown (+ AI note) for why this criticality was assigned — never a black-box score. */
   criticalityReason: string;
+  /** SO-assigned manual priority (set at creation or updated later) — separate from `criticality` above. */
+  soPriority?: SoPriority;
   status: DealerRequestStatus;
   raisedAt: string;
   assignedTo?: ID; // TeamMember id (SO)
   /** AI-suggested first-line triage/troubleshooting note, generated the moment the request is raised. */
   aiTriageNote: string;
   thread: DealerRequestMessage[];
+  /** SO forwarding history — one or more stakeholders per forward, oldest first. */
+  forwarding: ForwardingEntry[];
   resolvedAt?: string;
   resolutionSummary?: string;
   linkedTaskId?: ID; // the SO Cockpit / Teams task auto-created for this request

@@ -14,6 +14,7 @@ import type {
   DealerRequestMessage,
   DealerRequestStatus,
   ForwardingEntry,
+  ModernisationType,
   RequestCriticality,
   SoPriority,
   StakeholderRole,
@@ -22,6 +23,7 @@ import type {
 import { store, nextId } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 import { matchClauses } from "./policyBot.js";
+import { createModernisationRequest } from "./modernisation.js";
 
 export class DealerDeskError extends Error {}
 
@@ -48,6 +50,8 @@ const CATEGORY_BASE_CRITICALITY: Record<DealerRequestCategory, RequestCriticalit
   ROMMS: "Medium",
   SMS: "Medium",
   MarketIntelligence: "Low",
+  // A planned investment ask, not an operational fault — the SO works it at their own pace in Module 1.
+  Modernisation: "Low",
   Other: "Medium",
 };
 
@@ -171,6 +175,7 @@ function syncLinkedTask(req: DealerRequest) {
 export async function raiseDealerRequest(input: {
   outletId: string;
   category: DealerRequestCategory;
+  modernisationType?: ModernisationType;
   subject: string;
   description: string;
   externalReferenceNo?: string;
@@ -179,6 +184,9 @@ export async function raiseDealerRequest(input: {
 }): Promise<DealerRequest> {
   const outlet = outletOrThrow(input.outletId);
   if (!input.subject || !input.description) throw new DealerDeskError("subject and description are required");
+  if (input.category === "Modernisation" && !input.modernisationType) {
+    throw new DealerDeskError("modernisationType is required for a Modernisation request");
+  }
   const { level, reason } = computeCriticality(input);
   const so = [...store.team.values()].find((t) => t.role === "SO");
   const matchedClauses = matchClauses(`${input.category} ${input.subject} ${input.description}`, 3);
@@ -188,6 +196,7 @@ export async function raiseDealerRequest(input: {
     outletId: input.outletId,
     dealerName: outlet.dealerName ?? "Dealer",
     category: input.category,
+    modernisationType: input.modernisationType,
     subject: input.subject,
     description: input.description,
     externalReferenceNo: input.externalReferenceNo,
@@ -218,6 +227,12 @@ export async function raiseDealerRequest(input: {
 
   store.dealerRequests.set(req.id, req);
   ensureLinkedTask(req);
+
+  if (req.category === "Modernisation" && req.modernisationType) {
+    const modReq = createModernisationRequest(outlet.id, req.modernisationType, req.description, req.id);
+    req.linkedModernisationRequestId = modReq.id;
+  }
+
   return req;
 }
 

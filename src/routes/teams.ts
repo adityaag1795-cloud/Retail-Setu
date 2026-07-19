@@ -78,13 +78,18 @@ export function registerTeamRoutes(router: Router) {
         stretchName: c.stretchName,
         awaiting: c.fileNote?.status === "Draft" ? "File note approval" : "Budget approval",
       }));
-    const canopyProposals = [...store.outlets.values()]
-      .filter((o) => o.canopyRequest && !o.canopyRequest.soDecision)
-      .map((o) => ({ outletId: o.id, outletName: o.name, awaiting: "Canopy request decision" }));
+    const modernisationProposals = [...store.outlets.values()]
+      .flatMap((o) => o.modernisationRequests.filter((r) => !r.soDecision).map((r) => ({ outlet: o, request: r })))
+      .map(({ outlet, request }) => ({
+        outletId: outlet.id,
+        outletName: outlet.name,
+        modernisationType: request.modernisationType,
+        awaiting: request.soJustification ? "SO decision" : "SO justification & cost/IRR review",
+      }));
     sendJson(res, 200, {
       openCases: cases.map((c) => ({ id: c.id, stretchName: c.stretchName, stage: c.stage })),
       proposalsAwaitingApproval: caseProposals,
-      canopyProposalsAwaitingApproval: canopyProposals,
+      modernisationProposalsAwaitingApproval: modernisationProposals,
       stuckMilestones: stuckMilestones(),
       criticalDealerRequests: criticalOpenRequests().map((r) => ({
         id: r.id,

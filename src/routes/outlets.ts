@@ -6,6 +6,7 @@ import { generateSimplePdf } from "../services/pdfGen.js";
 import { monthlyKL, dryDayCount, outletTankStock } from "../services/predictive.js";
 import { requestsForOutlet } from "../services/dealerDesk.js";
 import * as wf from "../services/dealerWorkflow.js";
+import * as mod from "../services/modernisation.js";
 
 function outletOrThrow(id: string) {
   const o = store.outlets.get(id);
@@ -17,7 +18,7 @@ async function wrap<T>(fn: () => T | Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof wf.WorkflowError) throw new ApiError(409, err.message);
+    if (err instanceof wf.WorkflowError || err instanceof mod.ModernisationError) throw new ApiError(409, err.message);
     throw err;
   }
 }
@@ -58,7 +59,7 @@ export function registerOutletRoutes(router: Router) {
       dryDaysLast60: dryDayCount(outlet.id),
       tankStock: outletTankStock(outlet.id),
       dealerRequests: requestsForOutlet(outlet.id),
-      canopyRequest: outlet.canopyRequest,
+      modernisationRequests: outlet.modernisationRequests,
       linkedCase: linkedCase ? { id: linkedCase.id, stage: linkedCase.stage } : undefined,
     });
   });
@@ -144,36 +145,48 @@ export function registerOutletRoutes(router: Router) {
     res.end(pdf);
   });
 
-  // Canopy addition sub-workflow — available to any operational outlet, per the real
-  // "request cum commitment proposal from portal" flow (not gated on a live Module 2 case).
-  router.post("/api/outlets/:id/canopy-request", async (req, res, params) => {
-    const body = await readJsonBody<{ committedVolumeKL: number; costEstimate: number; irr: number; dealerJustification: string }>(req);
+  // Modernisation Request sub-workflow (Canopy/Driveway/DU/Tank/Electric Panel) — initiated via
+  // Module 7 (Dealer Request Desk); reviewed here on the outlet ("for recommendation").
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/justification", async (req, res, params) => {
+    const body = await readJsonBody<{ soJustification: string }>(req);
+    if (!body.soJustification) throw new ApiError(400, "soJustification is required");
+    sendJson(res, 200, await wrap(() => mod.setSoJustification(params["id"]!, params["reqId"]!, body.soJustification)));
+  });
+
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/cost-estimate", async (req, res, params) => {
+    const body = await readJsonBody<{ lineItems: { id: string; qty: number; rate: number }[] }>(req);
+    sendJson(res, 200, await wrap(() => mod.updateCostEstimateLineItems(params["id"]!, params["reqId"]!, body.lineItems ?? [])));
+  });
+
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/irr", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof mod.updateIrrAssumptions>[2]>(req);
+    sendJson(res, 200, await wrap(() => mod.updateIrrAssumptions(params["id"]!, params["reqId"]!, body)));
+  });
+
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/decision", async (req, res, params) => {
+    const body = await readJsonBody<{ decision: "Approved" | "Rejected"; justification: string; decidedBy: string }>(req);
     sendJson(
       res,
       200,
-      await wrap(() => wf.requestCanopy(params["id"]!, body.committedVolumeKL, body.costEstimate, body.irr, body.dealerJustification)),
+      await wrap(() => mod.decideModernisationRequest(params["id"]!, params["reqId"]!, body.decision, body.justification, body.decidedBy ?? "SO")),
     );
   });
 
-  router.post("/api/outlets/:id/canopy-request/decision", async (req, res, params) => {
-    const body = await readJsonBody<{ decision: "Approved" | "Rejected"; justification: string; decidedBy: string }>(req);
-    sendJson(res, 200, await wrap(() => wf.decideCanopyRequest(params["id"]!, body.decision, body.justification, body.decidedBy ?? "SO")));
-  });
-
-  router.post("/api/outlets/:id/canopy-request/eam", async (req, res, params) => {
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/eam", async (req, res, params) => {
     const body = await readJsonBody<{ approve: boolean }>(req);
-    sendJson(res, 200, await wrap(() => wf.decideCanopyEAM(params["id"]!, !!body.approve)));
+    sendJson(res, 200, await wrap(() => mod.decideModernisationEAM(params["id"]!, params["reqId"]!, !!body.approve)));
   });
 
-  router.post("/api/outlets/:id/canopy-request/weekly-check", async (req, res, params) => {
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/weekly-check", async (req, res, params) => {
     const body = await readJsonBody<{ actualKL: number }>(req);
-    sendJson(res, 200, await wrap(() => wf.recordWeeklyCanopyPerformance(params["id"]!, body.actualKL)));
+    sendJson(res, 200, await wrap(() => mod.recordWeeklyModernisationPerformance(params["id"]!, params["reqId"]!, body.actualKL)));
   });
 
-  router.get("/api/outlets/:id/canopy-file-note.pdf", (_req, res, params) => {
+  router.get("/api/outlets/:id/modernisation-requests/:reqId/file-note.pdf", (_req, res, params) => {
     const outlet = outletOrThrow(params["id"]!);
-    const fileNote = outlet.canopyRequest?.fileNote;
-    if (!fileNote) throw new ApiError(404, "Canopy file note not generated yet");
+    const modReq = outlet.modernisationRequests.find((r) => r.id === params["reqId"]);
+    const fileNote = modReq?.fileNote;
+    if (!fileNote) throw new ApiError(404, "Modernisation file note not generated yet");
     const lines = [
       `System ID: ${fileNote.systemId} | Initiated: ${fileNote.initiatedOn}`,
       fileNote.subject,
@@ -181,10 +194,10 @@ export function registerOutletRoutes(router: Router) {
       ...fileNote.routing.flatMap((r) => [`${r.role} — ${r.actorName}, ${r.actorTitle} (${r.timestamp.slice(0, 19).replace("T", " ")})`, r.remarks, ""]),
       `Status: ${fileNote.status}`,
     ];
-    const pdf = generateSimplePdf(`Canopy File Note — ${outlet.name}`, lines);
+    const pdf = generateSimplePdf(`Modernisation File Note — ${outlet.name}`, lines);
     res.writeHead(200, {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="${outlet.id}_canopy_file_note.pdf"`,
+      "content-disposition": `attachment; filename="${outlet.id}_modernisation_file_note.pdf"`,
       "content-length": pdf.length,
     });
     res.end(pdf);

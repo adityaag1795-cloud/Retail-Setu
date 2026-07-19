@@ -42,8 +42,13 @@ export interface Outlet {
   nozzleSalesStarted: boolean;
   commissionedDate?: string;
   linkedCaseId?: ID; // link back to the Module 2 DealerCase that created this outlet, if any
-  /** Canopy addition sub-workflow — available to any operational outlet, not only ones this system commissioned. */
-  canopyRequest?: CanopyRequest;
+  /**
+   * Modernisation-request sub-workflow (Canopy/Driveway/DU/Tank/Electric Panel) — available to
+   * any operational outlet, not only ones this system commissioned. Initiated by the dealer via
+   * Module 7's Dealer Request Desk; each entry then sits "for recommendation" here until the SO
+   * adds a justification, verifies/edits the cost estimate and IRR, and decides.
+   */
+  modernisationRequests: ModernisationRequest[];
 }
 
 /** Field names mirror HPCL's real SAP Fixed Asset Individual Listing (FAIL) export. */
@@ -337,13 +342,82 @@ export interface WeeklyPerformanceCheck {
   emailSent: boolean;
 }
 
-export interface CanopyRequest {
+/** The 5 modernisation types a dealer can request against an operational outlet. */
+export type ModernisationType = "Canopy" | "Driveway" | "DU" | "Tank" | "ElectricPanel";
+
+/** WDV depreciation bucket a cost-estimate line item falls into, per the real IRR sheet's own split. */
+export type DepreciationBucket = "Civil" | "PlantMachinery";
+
+export interface CostEstimateLineItem {
   id: ID;
+  description: string;
+  depreciationBucket: DepreciationBucket;
+  qty: number;
+  uom: string;
+  /** Rs per unit — HPCL's real standard rate for this item, editable by the SO if local rates differ. */
+  rate: number;
+  /** qty * rate, recomputed server-side whenever the line item changes. */
+  amount: number;
+}
+
+export interface CostEstimate {
+  lineItems: CostEstimateLineItem[];
+  /** GST rate applicable on the capex (e.g. 0.18) and the real state-wise non-creditable fraction
+   *  (Haryana FY23-24: 89.33% of HPCL's turnover is non-GST fuel, so that fraction of input GST on
+   *  capex is not creditable and becomes a real addback to investment cost). */
+  gstRatePct: number;
+  gstNonCreditablePct: number;
+  subtotal: number;
+  gstAddback: number;
+  totalInvestment: number;
+  civilAmount: number;
+  plantMachineryAmount: number;
+}
+
+export interface IrrAssumptions {
+  /** Incremental MS+HSD volume (KL/month) this investment is expected to unlock. */
+  incrementalVolumeKLPerMonth: number;
+  horizonYears: number;
+  /** Per the real HQO circular (24-May-2024, current year): Gross Margin Rs 975/KL. */
+  grossMarginRsPerKL: number;
+  /** Per the same circular: Operating Cost Rs 246/KL. */
+  operatingCostRsPerKL: number;
+  civilDepreciationRatePct: number;
+  pmDepreciationRatePct: number;
+  corporateTaxRatePct: number;
+  salvagePctOfPM: number;
+}
+
+export interface IrrYearRow {
+  year: number;
+  netIncome: number;
+  depreciation: number;
+  profitBeforeTax: number;
+  taxPaid: number;
+  cashFlow: number;
+}
+
+export interface IrrResult {
+  assumptions: IrrAssumptions;
+  yearlyCashFlow: IrrYearRow[];
+  irrPct: number | null;
+  /** Real HQO circular minimum: 15%, irrespective of investment amount. */
+  minimumHurdlePct: number;
+  meetsHurdle: boolean;
+  computedAt: string;
+}
+
+export interface ModernisationRequest {
+  id: ID;
+  modernisationType: ModernisationType;
   requestedAt: string;
-  committedVolumeKL: number;
-  costEstimate: number;
-  irr: number;
+  /** Set when this request was raised via Module 7 (Dealer Request Desk) rather than directly here. */
+  dealerRequestId?: ID;
   dealerJustification: string;
+  /** Added by the SO in Module 1 while the request sits "for recommendation". */
+  soJustification?: string;
+  costEstimate: CostEstimate;
+  irr?: IrrResult;
   soDecision?: {
     decision: "Approved" | "Rejected";
     justification: string;
@@ -584,9 +658,12 @@ export interface PolicyAnswer {
  * ticketing portal), ITPS (in-tank probe/ATG system feeding stock into SAP),
  * SMS (price-change/DU alert delivery to the dealer's registered mobile),
  * Market Intelligence (competitor pricing/activity submitted by the dealer,
- * not a fault — informational, routed to the RO).
+ * not a fault — informational, routed to the RO). Modernisation is the dealer's
+ * entry point for a Canopy/Driveway/DU/Tank/Electric Panel ask — raising one here
+ * creates the linked ModernisationRequest on the outlet, which then sits "for
+ * recommendation" in Module 1 for the SO's justification, cost-estimate and IRR review.
  */
-export type DealerRequestCategory = "ROMMS" | "ITPS" | "SMS" | "MarketIntelligence" | "Other";
+export type DealerRequestCategory = "ROMMS" | "ITPS" | "SMS" | "MarketIntelligence" | "Modernisation" | "Other";
 
 export type RequestCriticality = "Critical" | "High" | "Medium" | "Low";
 
@@ -625,6 +702,8 @@ export interface DealerRequest {
   outletId: ID;
   dealerName: string;
   category: DealerRequestCategory;
+  /** Required when category is "Modernisation". */
+  modernisationType?: ModernisationType;
   subject: string;
   description: string;
   /** Real external ticket/complaint reference, e.g. a ROMMS complaint number, if the dealer has one. */
@@ -649,4 +728,6 @@ export interface DealerRequest {
   resolvedAt?: string;
   resolutionSummary?: string;
   linkedTaskId?: ID; // the SO Cockpit / Teams task auto-created for this request
+  /** Set when category is "Modernisation" — the ModernisationRequest this raised on the outlet. */
+  linkedModernisationRequestId?: ID;
 }

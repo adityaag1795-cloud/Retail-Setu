@@ -107,6 +107,18 @@ async function renderOutlets() {
       <h2>Outlet Data Repository</h2>
       <p class="muted">Standard data + scanned communications, per outlet. Click an outlet for its one-pager.</p>
 
+      <h3>Input Tap <span class="muted">(upload a real sales or tank-stock snapshot — no code change needed)</span></h3>
+      <p class="muted">
+        Sales snapshot columns: <code>SAP Code, Date, MS (KL), HSD (KL)</code>. Tank-stock snapshot columns:
+        <code>SAP Code, Product, Stock Date, Capacity (Ltr), Stock Qty (Ltr), Pumpable Stock (Ltr), Ullage (Ltr)</code>.
+        Accepts .xlsx or .csv. Takes effect immediately and is saved to disk so it survives a restart.
+      </p>
+      <div class="form--inline">
+        <label>Sales snapshot <input id="upload-sales-file" type="file" accept=".xlsx,.csv" /></label>
+        <label>Stock snapshot <input id="upload-stock-file" type="file" accept=".xlsx,.csv" /></label>
+      </div>
+      <div id="upload-result" class="muted"></div>
+
       <form id="outlet-jump-form" class="form--inline">
         <label>Jump to outlet
           <select name="outletId" id="outlet-jump-select">
@@ -134,6 +146,43 @@ async function renderOutlets() {
         const id = qs("#outlet-jump-select").value;
         if (id)
             location.hash = `#/outlets/${id}`;
+    });
+    wireDataUploadInput("#upload-sales-file", "/data-uploads/sales");
+    wireDataUploadInput("#upload-stock-file", "/data-uploads/stock");
+}
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1] ?? "");
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+}
+function wireDataUploadInput(selector, endpoint) {
+    const input = document.querySelector(selector);
+    if (!input)
+        return;
+    input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file)
+            return;
+        const resultEl = document.querySelector("#upload-result");
+        try {
+            const base64 = await fileToBase64(file);
+            const result = await api.post(endpoint, { fileName: file.name, base64 });
+            const msg = `"${file.name}": ${result.rowsApplied}/${result.rowsRead} row(s) applied.${result.warnings.length ? ` ${result.warnings.length} warning(s): ${result.warnings.slice(0, 5).join(" ")}` : ""}`;
+            if (resultEl)
+                resultEl.innerHTML = `<p>${escapeHtml(msg)}</p>`;
+            toast(`Upload applied: ${result.rowsApplied} row(s)`);
+        }
+        catch (err) {
+            if (resultEl)
+                resultEl.innerHTML = `<p>Upload failed: ${escapeHtml(err.message)}</p>`;
+            toast("Upload failed");
+        }
+        finally {
+            input.value = "";
+        }
     });
 }
 async function renderOutletDetail(id) {
@@ -210,7 +259,7 @@ async function renderOutletDetail(id) {
         <button type="submit" class="btn">Save communication</button>
       </form>
 
-      ${renderCanopySection(o.id, o.status, report.canopyRequest)}
+      ${renderModernisationSection(o.id, o.status, report.modernisationRequests)}
     </section>`;
     qs("#comm-form").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -226,7 +275,7 @@ async function renderOutletDetail(id) {
         toast("Communication saved");
         await renderOutletDetail(id);
     });
-    wireOutletCanopyHandlers(o.id);
+    wireOutletModernisationHandlers(o.id, report.modernisationRequests);
 }
 // Separate "tab" for one outlet's itemised fixed-asset report (SAP FAIL format).
 async function renderOutletFixedAssets(id) {
@@ -262,7 +311,7 @@ async function renderCases() {
     app().innerHTML = `
     <section class="panel">
       <h2>Dealer Selection &amp; Development</h2>
-      <p class="muted">Stretch identification &rarr; feasibility &rarr; application &rarr; ASC/LEC/FVC &rarr; file note &rarr; LOI &rarr; milestones &rarr; NOC (auto-generates lease + dealership agreement) &rarr; MDM/SAP &rarr; budget &rarr; project &rarr; commissioning &rarr; canopy addition.</p>
+      <p class="muted">Stretch identification &rarr; feasibility &rarr; application &rarr; ASC/LEC/FVC &rarr; file note &rarr; LOI &rarr; milestones &rarr; NOC (auto-generates lease + dealership agreement) &rarr; MDM/SAP &rarr; budget &rarr; project &rarr; commissioning. Modernisation requests (canopy/driveway/DU/tank/electric panel) are raised via Module 7 and reviewed on the outlet page.</p>
 
       <h3>Step 1 — KML stretch identification</h3>
       <p class="muted">Locate industry outlets from a KML/KMZ export and identify stretches with no HPCL presence. Paste real KML Placemark XML, or run against the real sample stretch (CNG-addition proposed sites, Faridabad SA).</p>
@@ -573,7 +622,7 @@ async function renderCaseDetail(id) {
     }
     // Commissioned
     if (c.stage === "Commissioned") {
-        sections.push(`<h3>Outlet commissioned</h3><p><a href="#/outlets/${c.outletId}">View outlet record &rarr;</a> — canopy addition and further requests are managed from the outlet page.</p>`);
+        sections.push(`<h3>Outlet commissioned</h3><p><a href="#/outlets/${c.outletId}">View outlet record &rarr;</a> — modernisation requests (raised via Module 7) and further requests are managed from the outlet page.</p>`);
     }
     sections.push(`
     <h3>Activity log</h3>
@@ -582,32 +631,94 @@ async function renderCaseDetail(id) {
     app().innerHTML = `<section class="panel">${sections.join("")}</section>`;
     wireCaseHandlers(c);
 }
-// Canopy addition — available on any operational outlet's page (not gated on a live Module 2 case).
-function renderCanopySection(outletId, outletStatus, req) {
+const MODERNISATION_TYPE_LABELS = {
+    Canopy: "Canopy",
+    Driveway: "Driveway",
+    DU: "Dispensing Unit (DU)",
+    Tank: "Tank",
+    ElectricPanel: "Electric Panel",
+};
+// Modernisation Request (Canopy/Driveway/DU/Tank/Electric Panel) — initiated by the dealer via
+// Module 7 (Dealer Request Desk); reviewed here on the outlet's own page "for recommendation".
+function renderModernisationSection(outletId, outletStatus, requests) {
     if (outletStatus !== "Operational") {
-        return `<h3>Canopy Addition</h3><p class="muted">Available once the outlet is operational.</p>`;
-    }
-    if (!req) {
-        return `
-      <h3>Canopy Addition <span class="muted">(dealer request-cum-commitment proposal)</span></h3>
-      <form id="canopy-request-form" class="form">
-        <label>Committed volume (KL/month) <input name="committedVolumeKL" type="number" required /></label>
-        <label>Cost estimate (Rs.) <input name="costEstimate" type="number" required /></label>
-        <label>IRR (%) <input name="irr" type="number" step="0.1" required /></label>
-        <label>Dealer justification <textarea name="dealerJustification" required></textarea></label>
-        <button type="submit" class="btn">Submit canopy request</button>
-      </form>`;
+        return `<h3>Modernisation Requests</h3><p class="muted">Available once the outlet is operational.</p>`;
     }
     const parts = [
-        `<h3>Canopy Addition request</h3>
-     <p>Committed: ${req.committedVolumeKL} KL/month · Cost: Rs. ${req.costEstimate.toLocaleString("en-IN")} · IRR: ${req.irr}%</p>
-     <p>Dealer justification: ${escapeHtml(req.dealerJustification)}</p>`,
+        `<h3>Modernisation Requests <span class="muted">(Canopy / Driveway / DU / Tank / Electric Panel)</span></h3>
+     <p class="muted">Raised by the dealer via the Dealer Request Desk (Module 7). Each request sits here "for recommendation" until the SO adds a justification, verifies the cost estimate and IRR, and decides.</p>
+     <p><a class="btn btn--sm" href="#/dealer-desk">Raise a new modernisation request &rarr;</a></p>`,
     ];
+    if (!requests.length) {
+        parts.push(`<p class="muted">No modernisation requests on file for this outlet yet.</p>`);
+        return parts.join("");
+    }
+    for (const req of requests) {
+        parts.push(renderOneModernisationRequest(outletId, req));
+    }
+    return parts.join("");
+}
+function renderOneModernisationRequest(outletId, req) {
+    const ce = req.costEstimate;
+    const irr = req.irr;
+    const sections = [
+        `<div class="panel" style="margin-top:1rem">
+      <h4>${escapeHtml(MODERNISATION_TYPE_LABELS[req.modernisationType] ?? req.modernisationType)} — requested ${req.requestedAt.slice(0, 10)}</h4>
+      <p>Dealer justification: ${escapeHtml(req.dealerJustification)}</p>`,
+    ];
+    sections.push(`
+    <h5>Cost Estimate <span class="muted">(real HPCL standard rates — qty/rate editable)</span></h5>
+    <form id="mod-cost-form-${req.id}" class="form">
+      <table class="table">
+        <thead><tr><th>Description</th><th>Bucket</th><th>Qty</th><th>UOM</th><th>Rate (Rs.)</th><th>Amount (Rs.)</th></tr></thead>
+        <tbody>
+          ${ce.lineItems
+        .map((li) => `<tr>
+            <td>${escapeHtml(li.description)}</td>
+            <td>${li.depreciationBucket === "Civil" ? "Civil (10%)" : "Plant & Machinery (15%)"}</td>
+            <td><input name="qty_${li.id}" type="number" step="0.01" value="${li.qty}" style="width:6rem" /></td>
+            <td>${escapeHtml(li.uom)}</td>
+            <td><input name="rate_${li.id}" type="number" step="0.01" value="${li.rate}" style="width:8rem" /></td>
+            <td>Rs. ${li.amount.toLocaleString("en-IN")}</td>
+          </tr>`)
+        .join("")}
+        </tbody>
+      </table>
+      <p>
+        Subtotal: <strong>Rs. ${ce.subtotal.toLocaleString("en-IN")}</strong>
+        (Civil Rs. ${ce.civilAmount.toLocaleString("en-IN")} + Plant &amp; Machinery Rs. ${ce.plantMachineryAmount.toLocaleString("en-IN")})
+        &nbsp;|&nbsp; GST addback (${ce.gstRatePct}% &times; ${ce.gstNonCreditablePct}% non-creditable): <strong>Rs. ${ce.gstAddback.toLocaleString("en-IN")}</strong>
+        &nbsp;|&nbsp; Total Investment: <strong>Rs. ${ce.totalInvestment.toLocaleString("en-IN")}</strong>
+      </p>
+      <button type="submit" class="btn btn--sm">Recompute cost estimate</button>
+    </form>
+
+    <h5>IRR <span class="muted">(WDV depreciation, real HQO circular rates — Gross Margin Rs 975/KL, Op. Cost Rs 246/KL, 15% minimum)</span></h5>
+    <form id="mod-irr-form-${req.id}" class="form">
+      <label>Incremental volume (KL/month) <input name="incrementalVolumeKLPerMonth" type="number" step="0.1" value="${irr?.assumptions.incrementalVolumeKLPerMonth ?? 0}" required /></label>
+      <label>Horizon (years) <input name="horizonYears" type="number" value="${irr?.assumptions.horizonYears ?? 10}" required /></label>
+      <label>Gross margin (Rs/KL) <input name="grossMarginRsPerKL" type="number" value="${irr?.assumptions.grossMarginRsPerKL ?? 975}" required /></label>
+      <label>Operating cost (Rs/KL) <input name="operatingCostRsPerKL" type="number" value="${irr?.assumptions.operatingCostRsPerKL ?? 246}" required /></label>
+      <button type="submit" class="btn btn--sm">Compute / recompute IRR</button>
+    </form>
+    ${irr
+        ? `<p>
+      IRR: <strong>${irr.irrPct === null ? "not viable within horizon" : `${irr.irrPct.toFixed(1)}%`}</strong>
+      vs minimum hurdle <strong>${irr.minimumHurdlePct}%</strong>
+      <span class="badge badge--${irr.meetsHurdle ? "resolved" : "escalated"}">${irr.meetsHurdle ? "Meets hurdle" : "Below hurdle"}</span>
+    </p>`
+        : `<p class="muted">IRR not yet computed.</p>`}
+  `);
     if (!req.soDecision) {
-        parts.push(`
-      <form id="canopy-decision-form" class="form">
+        sections.push(`
+      <h5>SO recommendation</h5>
+      <form id="mod-justification-form-${req.id}" class="form">
+        <label>SO justification <textarea name="soJustification" required>${escapeHtml(req.soJustification ?? "")}</textarea></label>
+        <button type="submit" class="btn btn--sm">Save justification</button>
+      </form>
+      <form id="mod-decision-form-${req.id}" class="form">
         <label>Decided by <input name="decidedBy" required /></label>
-        <label>Justification <textarea name="justification" required></textarea></label>
+        <label>Decision remarks <textarea name="justification" required></textarea></label>
         <div class="form--inline">
           <button type="submit" name="decision" value="Approved" class="btn">Approve</button>
           <button type="submit" name="decision" value="Rejected" class="btn btn--danger">Reject</button>
@@ -615,10 +726,10 @@ function renderCanopySection(outletId, outletStatus, req) {
       </form>`);
     }
     else {
-        parts.push(`<p>SO decision: <strong>${escapeHtml(req.soDecision.decision)}</strong> by ${escapeHtml(req.soDecision.decidedBy)} — ${escapeHtml(req.soDecision.justification)}</p>`);
+        sections.push(`<p>SO decision: <strong>${escapeHtml(req.soDecision.decision)}</strong> by ${escapeHtml(req.soDecision.decidedBy)} — ${escapeHtml(req.soDecision.justification)}</p>`);
         if (req.fileNote) {
-            parts.push(`
-        <h4>File note</h4>
+            sections.push(`
+        <h5>File note</h5>
         <p class="muted">System ID: ${escapeHtml(req.fileNote.systemId)} · Initiated: ${escapeHtml(req.fileNote.initiatedOn)}</p>
         ${req.fileNote.routing
                 .map((r) => `
@@ -627,81 +738,103 @@ function renderCanopySection(outletId, outletStatus, req) {
             <p>${escapeHtml(r.remarks)}</p>
           </div>`)
                 .join("")}
-        <p><a class="btn btn--sm" href="/api/outlets/${outletId}/canopy-file-note.pdf" target="_blank">⬇ Download file note PDF</a></p>
+        <p><a class="btn btn--sm" href="/api/outlets/${outletId}/modernisation-requests/${req.id}/file-note.pdf" target="_blank">⬇ Download file note PDF</a></p>
       `);
         }
         if (req.budgetNoteText)
-            parts.push(`<h4>Budget note</h4><pre class="ai-output">${escapeHtml(req.budgetNoteText)}</pre>`);
+            sections.push(`<h5>Budget note</h5><pre class="ai-output">${escapeHtml(req.budgetNoteText)}</pre>`);
         if (req.eamStatus && req.eamStatus !== "Pending") {
-            parts.push(`<p>EAM status: <strong>${escapeHtml(req.eamStatus)}</strong></p>`);
+            sections.push(`<p>EAM status: <strong>${escapeHtml(req.eamStatus)}</strong></p>`);
         }
         else if (req.eamStatus === "Pending") {
-            parts.push(`
-        <form id="canopy-eam-form" class="form--inline">
+            sections.push(`
+        <form id="mod-eam-form-${req.id}" class="form--inline">
           <button type="submit" name="approve" value="1" class="btn">Approve EAM</button>
           <button type="submit" name="approve" value="0" class="btn btn--danger">Reject EAM</button>
         </form>`);
         }
         if (req.weeklyPerformance?.length) {
-            parts.push(`
-        <h4>Weekly performance vs commitment</h4>
+            sections.push(`
+        <h5>Weekly performance vs commitment</h5>
         <table class="table"><thead><tr><th>Week of</th><th>Committed</th><th>Actual</th><th>On track</th></tr></thead>
         <tbody>${req.weeklyPerformance.map((w) => `<tr><td>${w.weekOf}</td><td>${w.committedKL} KL</td><td>${w.actualKL} KL</td><td>${w.onTrack ? "✅" : "⚠️"}</td></tr>`).join("")}</tbody></table>`);
         }
         if (req.eamStatus === "Approved") {
-            parts.push(`
-        <form id="canopy-weekly-form" class="form--inline">
+            sections.push(`
+        <form id="mod-weekly-form-${req.id}" class="form--inline">
           <input name="actualKL" type="number" placeholder="Actual KL this week" required />
           <button type="submit" class="btn">Record weekly check</button>
         </form>`);
         }
     }
-    return parts.join("");
+    sections.push(`</div>`);
+    return sections.join("");
 }
-function wireOutletCanopyHandlers(outletId) {
+function wireOutletModernisationHandlers(outletId, requests) {
     const on = (sel, handler) => {
         const el = document.querySelector(sel);
         if (el)
             handler(el);
     };
-    on("#canopy-request-form", (el) => el.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const data = formToObject(e.target);
-        await api.post(`/outlets/${outletId}/canopy-request`, {
-            committedVolumeKL: Number(data["committedVolumeKL"]),
-            costEstimate: Number(data["costEstimate"]),
-            irr: Number(data["irr"]),
-            dealerJustification: data["dealerJustification"],
-        });
-        toast("Canopy request submitted");
-        await renderOutletDetail(outletId);
-    }));
-    on("#canopy-decision-form", (el) => el.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const submitter = e.submitter;
-        const data = formToObject(e.target);
-        await api.post(`/outlets/${outletId}/canopy-request/decision`, {
-            decision: submitter.value,
-            justification: data["justification"],
-            decidedBy: data["decidedBy"],
-        });
-        toast("Canopy decision recorded");
-        await renderOutletDetail(outletId);
-    }));
-    on("#canopy-eam-form", (el) => el.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const submitter = e.submitter;
-        await api.post(`/outlets/${outletId}/canopy-request/eam`, { approve: submitter.value === "1" });
-        toast("EAM decision recorded");
-        await renderOutletDetail(outletId);
-    }));
-    on("#canopy-weekly-form", (el) => el.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const data = formToObject(e.target);
-        await api.post(`/outlets/${outletId}/canopy-request/weekly-check`, { actualKL: Number(data["actualKL"]) });
-        toast("Weekly performance recorded");
-        await renderOutletDetail(outletId);
-    }));
+    for (const req of requests ?? []) {
+        on(`#mod-cost-form-${req.id}`, (el) => el.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const lineItems = req.costEstimate.lineItems.map((li) => ({
+                id: li.id,
+                qty: Number(form.elements.namedItem(`qty_${li.id}`).value),
+                rate: Number(form.elements.namedItem(`rate_${li.id}`).value),
+            }));
+            await api.post(`/outlets/${outletId}/modernisation-requests/${req.id}/cost-estimate`, { lineItems });
+            toast("Cost estimate recomputed");
+            await renderOutletDetail(outletId);
+        }));
+        on(`#mod-irr-form-${req.id}`, (el) => el.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const data = formToObject(e.target);
+            await api.post(`/outlets/${outletId}/modernisation-requests/${req.id}/irr`, {
+                incrementalVolumeKLPerMonth: Number(data.incrementalVolumeKLPerMonth),
+                horizonYears: Number(data.horizonYears),
+                grossMarginRsPerKL: Number(data.grossMarginRsPerKL),
+                operatingCostRsPerKL: Number(data.operatingCostRsPerKL),
+            });
+            toast("IRR recomputed");
+            await renderOutletDetail(outletId);
+        }));
+        on(`#mod-justification-form-${req.id}`, (el) => el.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const data = formToObject(e.target);
+            await api.post(`/outlets/${outletId}/modernisation-requests/${req.id}/justification`, { soJustification: data["soJustification"] });
+            toast("Justification saved");
+            await renderOutletDetail(outletId);
+        }));
+        on(`#mod-decision-form-${req.id}`, (el) => el.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const submitter = e.submitter;
+            const data = formToObject(e.target);
+            await api.post(`/outlets/${outletId}/modernisation-requests/${req.id}/decision`, {
+                decision: submitter.value,
+                justification: data["justification"],
+                decidedBy: data["decidedBy"],
+            });
+            toast("Decision recorded");
+            await renderOutletDetail(outletId);
+        }));
+        on(`#mod-eam-form-${req.id}`, (el) => el.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const submitter = e.submitter;
+            await api.post(`/outlets/${outletId}/modernisation-requests/${req.id}/eam`, { approve: submitter.value === "1" });
+            toast("EAM decision recorded");
+            await renderOutletDetail(outletId);
+        }));
+        on(`#mod-weekly-form-${req.id}`, (el) => el.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const data = formToObject(e.target);
+            await api.post(`/outlets/${outletId}/modernisation-requests/${req.id}/weekly-check`, { actualKL: Number(data["actualKL"]) });
+            toast("Weekly performance recorded");
+            await renderOutletDetail(outletId);
+        }));
+    }
 }
 // ---------------------------------------------------------------------------
 // ASC / LEC / FVC — real Dealer Selection Guidelines 2023 Annexure V / W1 / Y
@@ -1115,8 +1248,8 @@ async function renderTeams() {
       <h3>Open workflows &amp; proposals awaiting approval</h3>
       <ul>
         ${openWork.proposalsAwaitingApproval.map((p) => `<li><a href="#/cases/${p.caseId}">${escapeHtml(p.stretchName)}</a> — ${escapeHtml(p.awaiting)}</li>`).join("")}
-        ${openWork.canopyProposalsAwaitingApproval.map((p) => `<li><a href="#/outlets/${p.outletId}">${escapeHtml(p.outletName)}</a> — ${escapeHtml(p.awaiting)}</li>`).join("")}
-        ${!openWork.proposalsAwaitingApproval.length && !openWork.canopyProposalsAwaitingApproval.length ? "<li>Nothing awaiting approval.</li>" : ""}
+        ${openWork.modernisationProposalsAwaitingApproval.map((p) => `<li><a href="#/outlets/${p.outletId}">${escapeHtml(p.outletName)}</a> — ${escapeHtml(p.modernisationType)}: ${escapeHtml(p.awaiting)}</li>`).join("")}
+        ${!openWork.proposalsAwaitingApproval.length && !openWork.modernisationProposalsAwaitingApproval.length ? "<li>Nothing awaiting approval.</li>" : ""}
       </ul>
       ${openWork.stuckMilestones.length ? `<p class="warn">⚠️ Stuck: ${openWork.stuckMilestones.map((m) => `<a href="#/cases/${m.caseId}">${escapeHtml(m.stretchName)} — ${escapeHtml(m.milestoneLabel)}</a>`).join(", ")}</p>` : ""}
 
@@ -1314,7 +1447,15 @@ const DEALER_REQUEST_CATEGORIES = [
     { value: "ITPS", label: "ITPS / tank-gauging not working" },
     { value: "SMS", label: "SMS / price-alert not going" },
     { value: "MarketIntelligence", label: "Market intelligence" },
+    { value: "Modernisation", label: "Modernisation request (Canopy/Driveway/DU/Tank/Electric Panel)" },
     { value: "Other", label: "Other" },
+];
+const MODERNISATION_TYPE_OPTIONS = [
+    { value: "Canopy", label: "Canopy" },
+    { value: "Driveway", label: "Driveway" },
+    { value: "DU", label: "DU (Dispensing Unit)" },
+    { value: "Tank", label: "Tank" },
+    { value: "ElectricPanel", label: "Electric Panel" },
 ];
 const SO_PRIORITY_OPTIONS = [
     { value: "HighlyCritical", label: "Highly Critical" },
@@ -1342,7 +1483,10 @@ function requestRaiseForm(outlets, outletId) {
         <select name="outletId" required>${outlets.map((o) => `<option value="${o.id}" ${o.id === outletId ? "selected" : ""}>${escapeHtml(o.name)} (${escapeHtml(o.dealerName ?? "no dealer on file")})</option>`).join("")}</select>
       </label>
       <label>Category
-        <select name="category">${DEALER_REQUEST_CATEGORIES.map((c) => `<option value="${c.value}">${escapeHtml(c.label)}</option>`).join("")}</select>
+        <select name="category" id="dealer-request-category">${DEALER_REQUEST_CATEGORIES.map((c) => `<option value="${c.value}">${escapeHtml(c.label)}</option>`).join("")}</select>
+      </label>
+      <label id="modernisation-type-field" style="display:none">Modernisation type
+        <select name="modernisationType">${MODERNISATION_TYPE_OPTIONS.map((t) => `<option value="${t.value}">${escapeHtml(t.label)}</option>`).join("")}</select>
       </label>
       <label>Subject <input name="subject" required /></label>
       <label>Description <textarea name="description" required placeholder="e.g. ROMMS complaint logged 5 days ago, no solution yet"></textarea></label>
@@ -1361,6 +1505,14 @@ function wireRequestRaiseForm(onDone) {
     const el = document.querySelector("#dealer-request-form");
     if (!el)
         return;
+    const categorySelect = document.querySelector("#dealer-request-category");
+    const modernisationField = document.querySelector("#modernisation-type-field");
+    const syncModernisationVisibility = () => {
+        if (modernisationField)
+            modernisationField.style.display = categorySelect?.value === "Modernisation" ? "" : "none";
+    };
+    categorySelect?.addEventListener("change", syncModernisationVisibility);
+    syncModernisationVisibility();
     el.addEventListener("submit", async (e) => {
         e.preventDefault();
         const data = formToObject(e.target);
@@ -1370,6 +1522,8 @@ function wireRequestRaiseForm(onDone) {
             delete data.externalRaisedDate;
         if (!data.soPriority)
             delete data.soPriority;
+        if (data.category !== "Modernisation")
+            delete data.modernisationType;
         const created = await api.post("/dealer-requests", data);
         toast("Request raised — AI triage note generated");
         onDone(created.id);

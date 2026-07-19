@@ -12,7 +12,6 @@ import type {
   MilestoneStatus,
   GanttTask,
   Outlet,
-  CanopyRequest,
 } from "../types.js";
 import { store, nextId, freshMilestones } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
@@ -576,6 +575,7 @@ export async function commissionCase(caseId: string): Promise<{ dealerCase: Deal
     nozzleSalesStarted: true,
     commissionedDate: new Date().toISOString().slice(0, 10),
     linkedCaseId: c.id,
+    modernisationRequests: [],
   };
   store.outlets.set(outletId, outlet);
   c.outletId = outletId;
@@ -584,114 +584,5 @@ export async function commissionCase(caseId: string): Promise<{ dealerCase: Deal
   return { dealerCase: c, outlet };
 }
 
-// ---------------------------------------------------------------------------
-// Canopy addition sub-workflow — available to ANY operational outlet (not only
-// ones this system happened to commission through a live Module 2 case), since
-// in reality any existing dealership can submit a request-cum-commitment
-// proposal from the portal. Generates both a routing-chain file note and the
-// EAM/RBC-style budget note, matching the pattern used for new-site cases.
-// ---------------------------------------------------------------------------
-
-function outletOrThrow(outletId: string): Outlet {
-  const o = store.outlets.get(outletId);
-  if (!o) throw new WorkflowError(`Outlet ${outletId} not found`);
-  return o;
-}
-
-export function requestCanopy(outletId: string, committedVolumeKL: number, costEstimate: number, irr: number, dealerJustification: string): Outlet {
-  const outlet = outletOrThrow(outletId);
-  if (outlet.status !== "Operational") throw new WorkflowError("Canopy requests are only available for operational outlets");
-  const req: CanopyRequest = {
-    id: nextId("CANOPY"),
-    requestedAt: new Date().toISOString(),
-    committedVolumeKL,
-    costEstimate,
-    irr,
-    dealerJustification,
-    weeklyPerformance: [],
-  };
-  outlet.canopyRequest = req;
-  return outlet;
-}
-
-export async function decideCanopyRequest(
-  outletId: string,
-  decision: "Approved" | "Rejected",
-  justification: string,
-  decidedBy: string,
-): Promise<Outlet> {
-  const outlet = outletOrThrow(outletId);
-  const req = outlet.canopyRequest;
-  if (!req) throw new WorkflowError("No canopy request on this outlet");
-  req.soDecision = { decision, justification, decidedBy, decidedAt: new Date().toISOString() };
-  if (decision === "Approved") {
-    const policyClauses = matchClauses("canopy budget eam corpus fund working capital", 3);
-    const fileNoteRemarks = await getAiEngine().generate("canopyFileNote", {
-      outletName: outlet.name,
-      committedVolumeKL: req.committedVolumeKL,
-      costEstimate: req.costEstimate,
-      irr: req.irr,
-      dealerJustification: req.dealerJustification,
-      policyClauses,
-    });
-    req.fileNote = {
-      systemId: nextId("SYS"),
-      initiatedOn: new Date().toISOString().slice(0, 10),
-      subject: `Approval for canopy addition — ${outlet.name}`,
-      routing: [
-        {
-          id: nextId("RT"),
-          role: "Initiation",
-          actorName: decidedBy,
-          actorTitle: "Sales Officer",
-          remarks: fileNoteRemarks,
-          timestamp: new Date().toISOString(),
-        },
-        {
-          id: nextId("RT"),
-          role: "Approval",
-          actorName: decidedBy,
-          actorTitle: "Sales Officer",
-          remarks: justification || "Approved.",
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      policyClausesCited: policyClauses.map((p) => `${p.documentTitle} ${p.clauseNumber}`),
-      status: "Approved",
-      generatedAt: new Date().toISOString(),
-    };
-    req.budgetNoteText = await getAiEngine().generate("canopyBudgetNote", {
-      outletName: outlet.name,
-      committedVolumeKL: req.committedVolumeKL,
-      costEstimate: req.costEstimate,
-      irr: req.irr,
-      dealerJustification: req.dealerJustification,
-    });
-    req.eamStatus = "Pending";
-    req.projectTimeline = buildGanttTasks(new Date()).slice(0, 3); // canopy build is a lighter project
-  }
-  return outlet;
-}
-
-export function decideCanopyEAM(outletId: string, approve: boolean): Outlet {
-  const outlet = outletOrThrow(outletId);
-  if (!outlet.canopyRequest) throw new WorkflowError("No canopy request on this outlet");
-  outlet.canopyRequest.eamStatus = approve ? "Approved" : "Rejected";
-  if (approve) outlet.canopy = true;
-  return outlet;
-}
-
-/** Weekly job: compares committed vs actual volume and records whether the dealer is on track. */
-export function recordWeeklyCanopyPerformance(outletId: string, actualKL: number): Outlet {
-  const outlet = outletOrThrow(outletId);
-  if (!outlet.canopyRequest) throw new WorkflowError("No canopy request on this outlet");
-  const weekOf = new Date().toISOString().slice(0, 10);
-  outlet.canopyRequest.weeklyPerformance.push({
-    weekOf,
-    committedKL: outlet.canopyRequest.committedVolumeKL,
-    actualKL,
-    onTrack: actualKL >= outlet.canopyRequest.committedVolumeKL * 0.9,
-    emailSent: true,
-  });
-  return outlet;
-}
+// Modernisation Request sub-workflow (Canopy/Driveway/DU/Tank/Electric Panel) now lives in
+// services/modernisation.ts — initiated via Module 7, reviewed here on the outlet.

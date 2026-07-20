@@ -351,16 +351,16 @@ function renderTrafficSection(traffic) {
     if (!traffic) {
         return `<p class="muted">No DU transaction data uploaded for this outlet yet — upload one via the Input Tap on the Outlet Repository page.</p>`;
     }
-    const vt = traffic.vehicleTypeTotals;
+    const vt = traffic.vehicleTypeAverages;
     const vtLabels = { TwoWheeler: "Two-Wheeler", FourWheeler: "Four-Wheeler", HMV: "HMV", BowserSupply: "Bowser supply" };
     const inactive = traffic.nozzles.filter((n) => n.possiblyInactive);
     return `
-    <p class="muted">${traffic.daysOnFile} day(s) of real transaction data on file.</p>
+    <p class="muted">${traffic.daysOnFile} day(s) of real transaction data on file — averages below are per day over the last ${traffic.avgWindowDays} day(s).</p>
     <table class="table">
-      <thead><tr><th>Vehicle type</th><th>Transactions</th><th>Volume (KL)</th><th>Amount (Rs.)</th></tr></thead>
+      <thead><tr><th>Vehicle type</th><th>Avg transactions/day</th><th>Avg volume (KL)/day</th><th>Avg amount (Rs.)/day</th></tr></thead>
       <tbody>
         ${Object.keys(vt)
-        .map((k) => `<tr><td>${vtLabels[k] ?? k}</td><td>${vt[k].transactions}</td><td>${vt[k].volumeKL.toFixed(1)}</td><td>${vt[k].amountRs.toLocaleString("en-IN")}</td></tr>`)
+        .map((k) => `<tr><td>${vtLabels[k] ?? k}</td><td>${vt[k].transactions.toFixed(1)}</td><td>${vt[k].volumeKL.toFixed(2)}</td><td>${Math.round(vt[k].amountRs).toLocaleString("en-IN")}</td></tr>`)
         .join("")}
       </tbody>
     </table>

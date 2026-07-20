@@ -3,8 +3,8 @@ import { store, nextId } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 import {
   hasTrafficData,
-  vehicleTypeTotals,
-  productTotals,
+  vehicleTypeAverages,
+  productAverages,
   peakHour,
   nozzleStatusForOutlet,
   outletsWithInactiveNozzles,
@@ -198,7 +198,7 @@ export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
 
   if (q.includes("peak") && (q.includes("hour") || q.includes("time"))) {
     if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
-      const peak = peakHour(mentionedOutlet.id)!;
+      const peak = peakHour(mentionedOutlet.id, 7)!;
       matchedOutletIds = [mentionedOutlet.id];
       resultSummary = `${mentionedOutlet.name}: peak hour is ${peak.hour}:00-${peak.hour + 1}:00 with ${peak.transactions} transactions (real DU transaction log).`;
     } else if (mentionedOutlet) {
@@ -227,9 +227,9 @@ export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
     }
   } else if (q.includes("traffic") || q.includes("vehicle") || q.includes("wheeler") || q.includes("hmv") || q.includes("bowser")) {
     if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
-      const totals = vehicleTypeTotals(mentionedOutlet.id);
+      const { perDay, daysAveraged } = vehicleTypeAverages(mentionedOutlet.id, 7);
       matchedOutletIds = [mentionedOutlet.id];
-      resultSummary = `${mentionedOutlet.name} traffic pattern (real DU log): ${(Object.keys(totals) as VehicleType[]).map((vt) => `${VEHICLE_TYPE_LABELS[vt]} ${totals[vt].transactions} txns (${totals[vt].volumeKL.toFixed(1)} KL)`).join(", ")}.`;
+      resultSummary = `${mentionedOutlet.name} traffic pattern — daily average over the last ${daysAveraged} day(s) (real DU log): ${(Object.keys(perDay) as VehicleType[]).map((vt) => `${VEHICLE_TYPE_LABELS[vt]} ${perDay[vt].transactions.toFixed(1)} txns/day (${perDay[vt].volumeKL.toFixed(2)} KL/day)`).join(", ")}.`;
     } else if (mentionedOutlet) {
       resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't show a traffic pattern. Upload one via the Input Tap.`;
     } else {
@@ -239,9 +239,9 @@ export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
         : `No outlet has DU transaction data uploaded yet.`;
     }
   } else if ((q.includes("fuel") || q.includes("ms") || q.includes("hsd")) && (q.includes("pattern") || q.includes("trend")) && mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
-    const totals = productTotals(mentionedOutlet.id);
+    const { perDay, daysAveraged } = productAverages(mentionedOutlet.id, 7);
     matchedOutletIds = [mentionedOutlet.id];
-    resultSummary = `${mentionedOutlet.name} fuel sales pattern (real DU log): ${Object.entries(totals).map(([p, c]) => `${p} — ${c.transactions} txns, ${c.volumeKL.toFixed(1)} KL, Rs ${c.amountRs.toLocaleString("en-IN")}`).join("; ")}.`;
+    resultSummary = `${mentionedOutlet.name} fuel sales pattern — daily average over the last ${daysAveraged} day(s) (real DU log): ${Object.entries(perDay).map(([p, c]) => `${p} — ${c.transactions.toFixed(1)} txns/day, ${c.volumeKL.toFixed(2)} KL/day, Rs ${Math.round(c.amountRs).toLocaleString("en-IN")}/day`).join("; ")}.`;
   } else if (q.includes("below") && (q.includes("ta") || q.includes("trading area"))) {
     const rows = outletsBelowTA();
     matchedOutletIds = rows.map((r) => r.outlet.id);

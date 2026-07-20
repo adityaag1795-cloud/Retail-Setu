@@ -7,7 +7,7 @@ import { monthlyKL, dryDayCount, outletTankStock } from "../services/predictive.
 import { requestsForOutlet } from "../services/dealerDesk.js";
 import * as wf from "../services/dealerWorkflow.js";
 import * as mod from "../services/modernisation.js";
-import { hasTrafficData, trafficForOutlet, vehicleTypeTotals, productTotals, peakHour, nozzleStatusForOutlet } from "../services/trafficAnalytics.js";
+import { hasTrafficData, trafficForOutlet, vehicleTypeAverages, productAverages, peakHour, nozzleStatusForOutlet } from "../services/trafficAnalytics.js";
 import { analyseAndApplyOutletInput, outletDataNotesFor, OutletInputError } from "../services/outletInput.js";
 import type { ActionPoint } from "../types.js";
 
@@ -58,9 +58,10 @@ export function registerOutletRoutes(router: Router) {
     const actionPoints = [...store.actionPoints.values()].filter((a) => a.outletId === outlet.id).sort((a, b) => b.date.localeCompare(a.date));
     const traffic = hasTrafficData(outlet.id)
       ? {
-          vehicleTypeTotals: vehicleTypeTotals(outlet.id),
-          productTotals: productTotals(outlet.id),
-          peakHour: peakHour(outlet.id),
+          vehicleTypeAverages: vehicleTypeAverages(outlet.id, 7).perDay,
+          productAverages: productAverages(outlet.id, 7).perDay,
+          avgWindowDays: vehicleTypeAverages(outlet.id, 7).daysAveraged,
+          peakHour: peakHour(outlet.id, 7),
           nozzles: nozzleStatusForOutlet(outlet.id),
           daysOnFile: trafficForOutlet(outlet.id).length,
         }

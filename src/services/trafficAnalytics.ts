@@ -73,6 +73,33 @@ export function productTotals(outletId: string, days?: number): Record<string, V
   return totals;
 }
 
+function divideCount(c: VehicleTypeCount, n: number): VehicleTypeCount {
+  return { transactions: c.transactions / n, volumeKL: c.volumeKL / n, amountRs: c.amountRs / n };
+}
+
+/**
+ * Daily-average traffic, not a cumulative total — the SO wants "what does a typical recent day
+ * look like", not an ever-growing sum since the transaction log started. Averages over whatever
+ * of the last `days` (default 7) days are actually on file (so a fresh upload with only 3 days on
+ * file still shows a real 3-day average rather than diluting by phantom zero-days).
+ */
+export function vehicleTypeAverages(outletId: string, days = 7): { perDay: Record<VehicleType, VehicleTypeCount>; daysAveraged: number } {
+  const daysAveraged = trafficForOutlet(outletId, days).length;
+  const totals = vehicleTypeTotals(outletId, days);
+  const perDay = Object.fromEntries(
+    (Object.keys(totals) as VehicleType[]).map((vt) => [vt, divideCount(totals[vt], daysAveraged || 1)]),
+  ) as Record<VehicleType, VehicleTypeCount>;
+  return { perDay, daysAveraged };
+}
+
+/** Same daily-average treatment as vehicleTypeAverages, for the per-product (MS/HSD/...) breakdown. */
+export function productAverages(outletId: string, days = 7): { perDay: Record<string, VehicleTypeCount>; daysAveraged: number } {
+  const daysAveraged = trafficForOutlet(outletId, days).length;
+  const totals = productTotals(outletId, days);
+  const perDay = Object.fromEntries(Object.entries(totals).map(([k, c]) => [k, divideCount(c, daysAveraged || 1)]));
+  return { perDay, daysAveraged };
+}
+
 export function peakHour(outletId: string, days?: number): { hour: number; transactions: number } | null {
   const hourly = new Array(24).fill(0);
   let any = false;

@@ -1194,11 +1194,13 @@ function renderAscBlock(c) {
       <h4>ASC — Application Scrutiny Committee <span class="muted">(Annexure V)</span></h4>
       <p class="muted">Application No. ${escapeHtml(c.application.applicationNo)} · ${escapeHtml(c.application.applicantName)} · Category ${escapeHtml(c.application.applicantCategory)} — auto-populated from the Application above.</p>
       <form id="asc-form" class="form">
+        <label>Name of Regional Office <input name="regionalOfficeName" placeholder="e.g. GURGAON RETAIL REGIONAL OFFICE" /></label>
+        <label>Location Sr. No. <input name="locationSrNo" /></label>
         <table class="table"><thead><tr><th>#</th><th>Particulars</th><th>Applicability</th><th>Answer</th></tr></thead>
         <tbody>${ASC_CHECKLIST.map((it) => `<tr><td>${it.id}</td><td>${escapeHtml(it.particular)}</td><td>${escapeHtml(it.applicability)}</td><td>${ascAnswerSelect(`item_${it.id}`)}</td></tr>`).join("")}</tbody></table>
         <label>Rectifiable deficiencies (one per line) <textarea name="rectifiable"></textarea></label>
         <label>Non-rectifiable deficiencies (one per line) <textarea name="nonRectifiable"></textarea></label>
-        <label>Recommendation of ASC
+        <label>Candidate is
           <select name="recommendation" required>
             <option value="">Select…</option>
             <option>Eligible</option>
@@ -1207,8 +1209,12 @@ function renderAscBlock(c) {
             <option>To be considered under Group-3</option>
           </select>
         </label>
-        <label>Member I <input name="member1" required /></label>
-        <label>Member II <input name="member2" required /></label>
+        <label>Signature with date — Member I <input name="member1" required /></label>
+        <label>Signature with date — Member II <input name="member2" required /></label>
+        <label>Signature of Officer at Division / Territory / Regional Office — Name <input name="reviewingOfficerName" /></label>
+        <label>— Designation <input name="reviewingOfficerDesignation" /></label>
+        <label>Signature with Name &amp; Designation of Officer In-Charge — Name <input name="officerInChargeName" /></label>
+        <label>— Designation <input name="officerInChargeDesignation" /></label>
         <button type="submit" class="btn">Submit ASC</button>
       </form>
     </div>`;
@@ -1290,6 +1296,12 @@ function wireCaseHandlers(c) {
             recommendation: data["recommendation"],
             member1: data["member1"],
             member2: data["member2"],
+            regionalOfficeName: data["regionalOfficeName"],
+            locationSrNo: data["locationSrNo"],
+            reviewingOfficerName: data["reviewingOfficerName"],
+            reviewingOfficerDesignation: data["reviewingOfficerDesignation"],
+            officerInChargeName: data["officerInChargeName"],
+            officerInChargeDesignation: data["officerInChargeDesignation"],
         });
         toast("ASC recorded");
         await renderCaseDetail(c.id);

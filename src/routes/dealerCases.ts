@@ -107,6 +107,12 @@ export function registerDealerCaseRoutes(router: Router) {
       recommendation: Parameters<typeof wf.submitAsc>[4];
       member1: string;
       member2: string;
+      regionalOfficeName?: string;
+      locationSrNo?: string;
+      reviewingOfficerName?: string;
+      reviewingOfficerDesignation?: string;
+      officerInChargeName?: string;
+      officerInChargeDesignation?: string;
     }>(req);
     if (!body.recommendation || !body.member1 || !body.member2) {
       throw new ApiError(400, "recommendation, member1 and member2 are required");
@@ -123,6 +129,12 @@ export function registerDealerCaseRoutes(router: Router) {
           body.recommendation,
           body.member1,
           body.member2,
+          body.regionalOfficeName ?? "",
+          body.locationSrNo ?? "",
+          body.reviewingOfficerName ?? "",
+          body.reviewingOfficerDesignation ?? "",
+          body.officerInChargeName ?? "",
+          body.officerInChargeDesignation ?? "",
         ),
       ),
     );

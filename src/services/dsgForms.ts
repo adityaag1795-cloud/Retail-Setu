@@ -50,29 +50,34 @@ export const FVC_ITEMS_TEMPLATE: { itemNo: number; particularsToBeVerified: stri
   { itemNo: 9, particularsToBeVerified: "Proof of Name Change", documentsToBeVerified: "Gazette Notification on name change" },
 ];
 
+/** Mirrors the real Annexure V layout exactly — verified against a real filled HPCL ASC report. */
 export function formatAscReport(r: AscResult): string {
   const lines = [
     "Annexure - V",
-    "FORMAT FOR SCRUTINY OF APPLICATIONS FOR RO DEALERSHIP (ASC)",
+    "Format for Scrutiny of Applications for RO Dealership (to be used by ASC)",
     "",
-    `Location: ${r.location}    District: ${r.district}    State: ${r.state}    Category: ${r.category}    Type of RO: ${r.typeOfRO}`,
+    `Name of Regional Office: ${r.regionalOfficeName}    Location Sr. No.: ${r.locationSrNo}`,
+    `Location: ${r.location}    District: ${r.district}    State: ${r.state}    Category: ${r.category}    Type of Ro: ${r.typeOfRO}`,
     `Application form number: ${r.applicationFormNo}`,
     `Name: ${r.applicantName}`,
     `Father's/Husband's Name: ${r.fatherOrSpouseName}`,
+    `Name of spouse if applicable: ${r.spouseName ?? ""}`,
     "",
     "ELIGIBILITY",
     ...r.items.map((it) => `${it.id}. ${it.particular} [${it.applicability}] — ${it.answer || "(not answered)"}`),
     "",
     "Remarks: Following deficiencies have been observed during scrutiny:-",
     "Rectifiable",
-    ...(r.rectifiableDeficiencies.length ? r.rectifiableDeficiencies.map((d, i) => `  ${String.fromCharCode(97 + i)}. ${d}`) : ["  (none)"]),
+    ...(r.rectifiableDeficiencies.length ? r.rectifiableDeficiencies.map((d, i) => `  ${String.fromCharCode(97 + i)}. ${d}`) : ["  NA"]),
     "Non Rectifiable",
-    ...(r.nonRectifiableDeficiencies.length ? r.nonRectifiableDeficiencies.map((d, i) => `  ${String.fromCharCode(97 + i)}. ${d}`) : ["  (none)"]),
+    ...(r.nonRectifiableDeficiencies.length ? r.nonRectifiableDeficiencies.map((d, i) => `  ${String.fromCharCode(97 + i)}. ${d}`) : ["  NA"]),
     "",
-    `RECOMMENDATION OF ASC: ${r.recommendation || "(pending)"}`,
+    `CANDIDATE IS: ${r.recommendation || "(pending)"}`,
     "",
-    `Member - I: ${r.member1}`,
-    `Member - II: ${r.member2}`,
+    `Signature with date Member - I: ${r.member1}`,
+    `Signature with date Member - II: ${r.member2}`,
+    `Signature of Officer at Division / Territory / Regional Office: ${r.reviewingOfficerName}${r.reviewingOfficerDesignation ? ` (${r.reviewingOfficerDesignation})` : ""}`,
+    `Signature with Name & Designation of Officer In-Charge: ${r.officerInChargeName}${r.officerInChargeDesignation ? ` (${r.officerInChargeDesignation})` : ""}`,
     `Completed: ${r.completedAt.slice(0, 19).replace("T", " ")}`,
   ];
   return lines.join("\n");

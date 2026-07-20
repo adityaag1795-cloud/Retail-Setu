@@ -192,6 +192,12 @@ export function submitAsc(
   recommendation: AscRecommendation,
   member1: string,
   member2: string,
+  regionalOfficeName: string,
+  locationSrNo: string,
+  reviewingOfficerName: string,
+  reviewingOfficerDesignation: string,
+  officerInChargeName: string,
+  officerInChargeDesignation: string,
 ): DealerCase {
   const c = getCase(caseId);
   const app = applicationOrThrow(c);
@@ -200,6 +206,7 @@ export function submitAsc(
     applicationFormNo: app.applicationNo,
     applicantName: app.applicantName,
     fatherOrSpouseName: app.fatherOrSpouseName,
+    spouseName: app.spouseName,
     location: c.stretchName,
     district: app.district,
     state: app.state,
@@ -209,8 +216,14 @@ export function submitAsc(
     rectifiableDeficiencies,
     nonRectifiableDeficiencies,
     recommendation,
+    regionalOfficeName,
+    locationSrNo,
     member1,
     member2,
+    reviewingOfficerName,
+    reviewingOfficerDesignation,
+    officerInChargeName,
+    officerInChargeDesignation,
     completedAt: new Date().toISOString(),
     reportText: "",
   };

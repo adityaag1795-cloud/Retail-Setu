@@ -239,6 +239,7 @@ export interface AscResult {
   applicationFormNo: string;
   applicantName: string;
   fatherOrSpouseName: string;
+  spouseName?: string;
   location: string;
   district: string;
   state: string;
@@ -249,8 +250,16 @@ export interface AscResult {
   rectifiableDeficiencies: string[];
   nonRectifiableDeficiencies: string[];
   recommendation: AscRecommendation;
+  /** Real Annexure V header fields — an ASC report is filed against a specific numbered site under a named Regional Office. */
+  regionalOfficeName: string;
+  locationSrNo: string;
   member1: string;
   member2: string;
+  /** Real Annexure V has two more sign-offs beyond the two committee members: the scrutinizing officer, and the final Officer In-Charge (e.g. GM Retail) who endorses the recommendation. */
+  reviewingOfficerName: string;
+  reviewingOfficerDesignation: string;
+  officerInChargeName: string;
+  officerInChargeDesignation: string;
   completedAt: string;
   /** Formatted to mirror the real Annexure V layout. */
   reportText: string;

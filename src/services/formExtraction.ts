@@ -1,14 +1,30 @@
 /**
  * Best-effort field extraction for an uploaded dealer Application Form.
  *
- * This environment has no network access to a vision/OCR service, so this is NOT true OCR —
- * it only works on text that's actually extractable (a text layer in a PDF/DOCX, or a plain
- * .txt/.md upload). A scanned image with no text layer will extract nothing and the SO must
- * fill the Application Form fields in by hand, same as today. Every extracted field is a
- * suggestion the SO reviews before "Save application" actually commits it — nothing here
- * writes to the case directly.
+ * This environment has no network access to a vision/OCR service and no OCR engine bundled, so
+ * this is NOT true OCR of a scanned image — it only works on text that's actually recoverable
+ * from the file: a real text layer in a PDF (see pdfReader.ts — handles both simple and
+ * embedded-subset-font PDFs via their ToUnicode CMap), the paragraphs of a DOCX (docxReader.ts),
+ * or a plain .txt/.md upload. A genuinely scanned image with no text layer at all will extract
+ * nothing and the SO must fill the Application Form fields in by hand, same as today. Every
+ * extracted field is a suggestion the SO reviews before "Save application" actually commits it —
+ * nothing here writes to the case directly.
  */
 import type { ApplicationForm } from "../types.js";
+import { extractPdfText } from "./pdfReader.js";
+import { extractDocxText } from "./docxReader.js";
+
+/** Recovers real text from an uploaded Application Form, dispatching by file type. */
+export function extractRawTextFromUpload(fileName: string, opts: { text?: string; base64?: string }): string {
+  const lower = fileName.toLowerCase();
+  if (opts.base64) {
+    const buf = Buffer.from(opts.base64, "base64");
+    if (lower.endsWith(".pdf")) return extractPdfText(buf).text;
+    if (lower.endsWith(".docx")) return extractDocxText(buf);
+    return buf.toString("utf-8");
+  }
+  return opts.text ?? "";
+}
 
 type ExtractableField = Exclude<keyof ApplicationForm, "otherFields">;
 

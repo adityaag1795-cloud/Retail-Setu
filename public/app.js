@@ -749,7 +749,7 @@ async function renderCaseDetail(id) {
             .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
             .join("")}</tbody></table>`
         : `<div class="form">
-        <label>Upload dealer's Application Form (optional — best-effort field extraction, text-based files only; no OCR service is available offline, so scanned images won't extract)
+        <label>Upload dealer's Application Form (optional — reads real text out of PDF/DOCX/TXT/MD and best-effort matches known fields; a genuinely scanned image PDF has no text layer to read and won't extract, since no OCR service is available offline)
           <input id="application-upload" type="file" accept=".txt,.md,.pdf,.docx" />
         </label>
         ${c.applicationFormUpload
@@ -1428,8 +1428,9 @@ function wireCaseHandlers(c) {
         const file = input.files?.[0];
         if (!file)
             return;
-        const text = await file.text();
-        const result = await api.post(`/cases/${c.id}/application/extract`, { text, fileName: file.name });
+        const isBinary = /\.(pdf|docx)$/i.test(file.name);
+        const body = isBinary ? { base64: await fileToBase64(file), fileName: file.name } : { text: await file.text(), fileName: file.name };
+        const result = await api.post(`/cases/${c.id}/application/extract`, body);
         const warningsEl = document.querySelector("#application-upload-warnings");
         if (warningsEl)
             warningsEl.innerHTML = result.warnings.map((w) => `<p>${escapeHtml(w)}</p>`).join("");

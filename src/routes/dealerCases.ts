@@ -84,14 +84,18 @@ export function registerDealerCaseRoutes(router: Router) {
     sendJson(res, 200, await wrap(() => wf.submitApplication(params["id"]!, body)));
   });
 
-  // Best-effort field extraction from an uploaded Application Form (text-based only — no OCR
-  // service is reachable from this environment). Persists the upload + extraction result on the
-  // case itself (so an FVC officer/auditor can see it later, even after reload) and returns
+  // Best-effort field extraction from an uploaded Application Form. Real text extraction for
+  // PDF (incl. embedded-subset-font PDFs via ToUnicode CMap — see pdfReader.ts) and DOCX
+  // (docxReader.ts); a genuinely scanned image PDF with no text layer still can't be read — no
+  // OCR service is reachable from this environment. Persists the upload + extraction result on
+  // the case itself (so an FVC officer/auditor can see it later, even after reload) and returns
   // suggested field values for the SO to review. Does not submit the ApplicationForm — actual
   // submission still goes through POST /api/cases/:id/application above.
   router.post("/api/cases/:id/application/extract", async (req, res, params) => {
-    const body = await readJsonBody<{ text: string; fileName?: string }>(req);
-    const { extraction } = await wrap(() => wf.recordApplicationFormUpload(params["id"]!, body.fileName ?? "upload.txt", body.text ?? ""));
+    const body = await readJsonBody<{ text?: string; base64?: string; fileName?: string }>(req);
+    const { extraction } = await wrap(() =>
+      wf.recordApplicationFormUpload(params["id"]!, body.fileName ?? "upload.txt", { text: body.text, base64: body.base64 }),
+    );
     sendJson(res, 200, extraction);
   });
 

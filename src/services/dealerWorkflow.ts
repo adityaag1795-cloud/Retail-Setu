@@ -18,7 +18,7 @@ import { store, nextId, freshMilestones } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 import { matchClauses } from "./policyBot.js";
 import { ASC_CHECKLIST_TEMPLATE, LEC_EVALUATION_TEMPLATE, FVC_ITEMS_TEMPLATE, formatAscReport, formatLecReport, formatFvcReport } from "./dsgForms.js";
-import { extractApplicationFormFields, type ExtractionResult } from "./formExtraction.js";
+import { extractApplicationFormFields, extractRawTextFromUpload, type ExtractionResult } from "./formExtraction.js";
 import { defaultFeasibilityReportForm, renderFeasibilityReportText } from "./feasibilityReport.js";
 
 export class WorkflowError extends Error {}
@@ -160,8 +160,9 @@ export function submitApplication(caseId: string, application: ApplicationForm):
  * just the browser), so an FVC officer/auditor can later see what the intake was based on. Does
  * NOT submit the ApplicationForm — the SO still reviews and calls submitApplication separately.
  */
-export function recordApplicationFormUpload(caseId: string, fileName: string, rawText: string): { case: DealerCase; extraction: ExtractionResult } {
+export function recordApplicationFormUpload(caseId: string, fileName: string, uploadOpts: { text?: string; base64?: string }): { case: DealerCase; extraction: ExtractionResult } {
   const c = getCase(caseId);
+  const rawText = extractRawTextFromUpload(fileName, uploadOpts);
   const extraction = extractApplicationFormFields(rawText);
   c.applicationFormUpload = {
     fileName,
@@ -321,6 +322,11 @@ export async function generateFileNote(caseId: string): Promise<DealerCase> {
     application: c.application ?? undefined,
     inspections: c.inspections,
     policyClauses,
+    salesArea: c.salesArea,
+    caseType: c.caseType,
+    competitorContext: c.competitorContext,
+    roster: c.roster,
+    feasible: c.feasibilityReport?.feasible ?? false,
   });
   const so = [...store.team.values()].find((t) => t.role === "SO");
   c.fileNote = {

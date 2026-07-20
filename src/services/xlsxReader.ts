@@ -1,37 +1,10 @@
-import { inflateRawSync } from "node:zlib";
+import { readZipEntries } from "./zipReader.js";
 
 /**
  * Minimal zero-dependency .xlsx reader — same technique as the KMZ reader in kml.ts (a .xlsx is
  * a ZIP of XML parts, just like a .kmz). Reads local-file-header entries (stored or deflated),
  * enough to pull sharedStrings.xml and the first worksheet out of a real uploaded workbook.
  */
-
-interface ZipEntry {
-  name: string;
-  data: Buffer;
-}
-
-function readZipEntries(buf: Buffer): ZipEntry[] {
-  const entries: ZipEntry[] = [];
-  let offset = 0;
-  while (offset < buf.length - 4 && buf.readUInt32LE(offset) === 0x04034b50) {
-    const compressionMethod = buf.readUInt16LE(offset + 8);
-    const compressedSize = buf.readUInt32LE(offset + 18);
-    const nameLen = buf.readUInt16LE(offset + 26);
-    const extraLen = buf.readUInt16LE(offset + 28);
-    const nameStart = offset + 30;
-    const name = buf.toString("utf-8", nameStart, nameStart + nameLen);
-    const dataStart = nameStart + nameLen + extraLen;
-    const raw = buf.subarray(dataStart, dataStart + compressedSize);
-    let data: Buffer;
-    if (compressionMethod === 0) data = Buffer.from(raw);
-    else if (compressionMethod === 8) data = inflateRawSync(raw);
-    else data = Buffer.alloc(0);
-    entries.push({ name, data });
-    offset = dataStart + compressedSize;
-  }
-  return entries;
-}
 
 function parseSharedStrings(xml: string): string[] {
   const strings: string[] = [];

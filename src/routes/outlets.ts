@@ -8,6 +8,7 @@ import { requestsForOutlet } from "../services/dealerDesk.js";
 import * as wf from "../services/dealerWorkflow.js";
 import * as mod from "../services/modernisation.js";
 import { hasTrafficData, trafficForOutlet, vehicleTypeTotals, productTotals, peakHour, nozzleStatusForOutlet } from "../services/trafficAnalytics.js";
+import { analyseAndApplyOutletInput, outletDataNotesFor, OutletInputError } from "../services/outletInput.js";
 import type { ActionPoint } from "../types.js";
 
 function outletOrThrow(id: string) {
@@ -21,6 +22,7 @@ async function wrap<T>(fn: () => T | Promise<T>): Promise<T> {
     return await fn();
   } catch (err) {
     if (err instanceof wf.WorkflowError || err instanceof mod.ModernisationError) throw new ApiError(409, err.message);
+    if (err instanceof OutletInputError) throw new ApiError(400, err.message);
     throw err;
   }
 }
@@ -255,7 +257,26 @@ export function registerOutletRoutes(router: Router) {
     const point = store.actionPoints.get(params["apId"]!);
     if (!point || point.outletId !== params["id"]) throw new ApiError(404, "Action point not found");
     const body = await readJsonBody<Partial<ActionPoint>>(req);
+    const justCompleted = body.status === "Done" && point.status !== "Done";
     Object.assign(point, body);
+    if (justCompleted) point.completedAt = new Date().toISOString();
+    else if (body.status && body.status !== "Done") point.completedAt = undefined;
     sendJson(res, 200, point);
+  });
+
+  // Free-form "keep feeding me data" input tap — one fact per line, no code change needed. See
+  // services/outletInput.ts for what gets applied directly vs. merged into the Master Sheet vs.
+  // kept as a plain note.
+  router.get("/api/outlets/:id/data-input", (_req, res, params) => {
+    outletOrThrow(params["id"]!);
+    sendJson(res, 200, outletDataNotesFor(params["id"]!));
+  });
+
+  router.post("/api/outlets/:id/data-input", async (req, res, params) => {
+    outletOrThrow(params["id"]!);
+    const body = await readJsonBody<{ text: string }>(req);
+    if (!body.text) throw new ApiError(400, "text is required");
+    const note = await wrap(() => analyseAndApplyOutletInput(params["id"]!, body.text));
+    sendJson(res, 201, { note, outlet: store.outlets.get(params["id"]!) });
   });
 }

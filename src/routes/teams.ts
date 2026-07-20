@@ -42,7 +42,10 @@ export function registerTeamRoutes(router: Router) {
     const task = store.tasks.get(params["id"]!);
     if (!task) throw new ApiError(404, "Task not found");
     const body = await readJsonBody<Partial<TaskItem>>(req);
+    const justCompleted = body.status === "Done" && task.status !== "Done";
     Object.assign(task, body);
+    if (justCompleted) task.completedAt = new Date().toISOString();
+    else if (body.status && body.status !== "Done") task.completedAt = undefined;
     sendJson(res, 200, task);
   });
 

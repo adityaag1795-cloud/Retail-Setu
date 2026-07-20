@@ -47,8 +47,25 @@ export function registerDealerCaseRoutes(router: Router) {
     sendJson(res, 200, await wrap(() => wf.setRoster(params["id"]!, body.entries ?? [])));
   });
 
-  router.post("/api/cases/:id/feasibility", async (_req, res, params) => {
-    sendJson(res, 200, await wrap(() => wf.generateFeasibilityReport(params["id"]!)));
+  router.get("/api/cases/:id/feasibility-form", async (_req, res, params) => {
+    sendJson(res, 200, await wrap(() => wf.getFeasibilityReportForm(params["id"]!)));
+  });
+
+  router.post("/api/cases/:id/feasibility-form", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof wf.saveFeasibilityReportForm>[1]>(req);
+    sendJson(res, 200, await wrap(() => wf.saveFeasibilityReportForm(params["id"]!, body)));
+  });
+
+  router.get("/api/cases/:id/feasibility-report.pdf", async (_req, res, params) => {
+    const c = await wrap(() => wf.getCaseById(params["id"]!));
+    if (!c.feasibilityReport) throw new ApiError(404, "Feasibility report not generated yet");
+    const pdf = generateSimplePdf(`Report on Feasibility — ${c.stretchName}`, c.feasibilityReport.text.split("\n"));
+    res.writeHead(200, {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="${c.id}_feasibility_report.pdf"`,
+      "content-length": pdf.length,
+    });
+    res.end(pdf);
   });
 
   // Resitement-only: technical evaluation committee.

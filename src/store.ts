@@ -17,6 +17,7 @@ import type {
   NozzleActivity,
   ActionPoint,
   TradingAreaSnapshot,
+  OutletDataNote,
 } from "./types.js";
 import {
   seedOutlets,
@@ -66,6 +67,7 @@ class Store {
   nozzleActivity: NozzleActivity[] = [];
   actionPoints = new Map<string, ActionPoint>();
   tradingAreas = new Map<string, TradingAreaSnapshot>();
+  outletDataNotes = new Map<string, OutletDataNote>();
 
   constructor() {
     seedOutlets.forEach((o) => this.outlets.set(o.id, o));

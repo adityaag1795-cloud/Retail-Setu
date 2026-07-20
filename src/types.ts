@@ -98,6 +98,26 @@ export interface ActionPoint {
   dueDate?: string;
   status: ActionPointStatus;
   createdAt: string;
+  /** Set the moment status transitions to "Done" — feeds the Cockpit's completed-work calendar. */
+  completedAt?: string;
+}
+
+/**
+ * A free-form "keep feeding me data" input against an outlet — the SO pastes whatever update
+ * they have (one fact per line) rather than waiting for a code change. Lines matching a known
+ * Outlet field (Status:, Dealer Name:, Canopy:, Nozzle Sales Started:, TA Average KL:) are
+ * applied directly; any other "Key: Value" line is merged into the outlet's free-form Master
+ * Sheet; anything that isn't a recognisable Key: Value line is kept verbatim as a note rather
+ * than dropped or guessed at — see services/outletInput.ts.
+ */
+export interface OutletDataNote {
+  id: ID;
+  outletId: ID;
+  submittedAt: string;
+  rawText: string;
+  structuredFieldUpdates: { field: string; oldValue: string; newValue: string }[];
+  masterSheetUpdates: { key: string; oldValue?: string; newValue: string }[];
+  freeTextNotes: string[];
 }
 
 /** Field names mirror HPCL's real SAP Fixed Asset Individual Listing (FAIL) export. */
@@ -525,6 +545,69 @@ export interface DealershipAgreement {
   tenureYears: number;
 }
 
+// ---------------------------------------------------------------------------
+// Feasibility Report — structured, matches HPCL's real "Report on Feasibility:
+// Proposed Retail Outlet" form (section numbers/labels below mirror that form
+// exactly) rather than a free-text AI summary. See services/feasibilityReport.ts.
+// ---------------------------------------------------------------------------
+
+export type MarketClass = "A" | "B" | "C" | "D1(NH)" | "D2(SH)" | "E";
+export type TrafficLevel = "High" | "Medium" | "Low";
+export type CarriagewayType = "Divided carriageway" | "Undivided carriageway";
+
+/** One row of the "Trading Area Potential" table — MS & HSD sales from T.A. ROs for last 12 months. */
+export interface TradingAreaPotentialRow {
+  roName: string;
+  distanceFromProposedKm?: number;
+  oilCo: string; // as on the real form: "HPC" | "IOC" | "BPC" | "Pvt." etc.
+  msKLPM: number;
+  hsdKLPM: number;
+}
+
+export interface FeasibilityReportForm {
+  locationName: string;
+  district: string;
+  state: string;
+  classOfMarket: MarketClass;
+  existingTradingAreaOrMonopoly: "Existing" | "Monopoly" | "New";
+  lsaOrRemoteArea: string;
+  tradingAreaPotential: TradingAreaPotentialRow[];
+  trafficLevel: TrafficLevel;
+  expectedTrafficGrowthPct: number;
+  reasonForTrafficGrowth: string;
+  presentTAGrowthMsKLPM: number;
+  presentTAGrowthHsdKLPM: number;
+  expectedTAGrowthMsPct: number;
+  expectedTAGrowthHsdPct: number;
+  expectedTAPotentialMsKLPM: number;
+  expectedTAPotentialHsdKLPM: number;
+  meetsVolumeNorms: YesNo;
+  reasonForAnticipatedGrowth: string;
+  estimatedSalesYear1Ms: number;
+  estimatedSalesYear1Hsd: number;
+  estimatedSalesYear2Ms: number;
+  estimatedSalesYear2Hsd: number;
+  estimatedSalesYear3Ms: number;
+  estimatedSalesYear3Hsd: number;
+  marketIntelligence: string;
+  generalInformation: string;
+  feasibleAsPerVolumeNorms: YesNo;
+  mayBeIncludedInSrmp: YesNo;
+  regularOrRural: "Regular" | "Rural" | "";
+  roadNo: string;
+  stretchBoundary: string;
+  kmStoneFrom: string;
+  kmStoneTo: string;
+  distanceFromLandmark: string;
+  boundaryIdentification: string;
+  otherInfo: string;
+  carriagewayType: CarriagewayType;
+  nearbyRODistanceNote: string;
+  preparedBy: string;
+  designation: string;
+  reportDate: string;
+}
+
 export interface DealerCase {
   id: ID;
   caseType: CaseType;
@@ -537,6 +620,7 @@ export interface DealerCase {
   outletId?: ID; // set once the case produces/links to an Outlet
   resitement?: ResitementDetails;
 
+  feasibilityReportForm?: FeasibilityReportForm;
   feasibilityReport?: {
     text: string;
     feasible: boolean;
@@ -677,6 +761,8 @@ export interface TaskItem {
   linkedModule?: "Outlet" | "DealerCase" | "Analytics" | "Knowledge" | "DealerRequest";
   linkedRecordId?: ID;
   createdAt: string;
+  /** Set the moment status transitions to "Done" — the record of what was done, and when, for the Cockpit's completed-work calendar. */
+  completedAt?: string;
 }
 
 export interface KPIRecord {

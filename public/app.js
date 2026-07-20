@@ -191,7 +191,7 @@ function wireDataUploadInput(selector, endpoint) {
     });
 }
 async function renderOutletDetail(id) {
-    const report = await api.get(`/outlets/${id}/report`);
+    const [report, dataNotes] = await Promise.all([api.get(`/outlets/${id}/report`), api.get(`/outlets/${id}/data-input`)]);
     const o = report.outlet;
     app().innerHTML = `
     <section class="panel">
@@ -282,6 +282,19 @@ async function renderOutletDetail(id) {
         <button type="submit" class="btn btn--sm">Add action point</button>
       </form>
 
+      <h3>Data Input <span class="muted">(keep feeding real updates — one fact per line, no code change needed)</span></h3>
+      <p class="muted">
+        Recognised fields apply straight to the outlet: <code>Status:</code>, <code>Dealer Name:</code>, <code>Canopy:</code> (yes/no),
+        <code>Nozzle Sales Started:</code> (yes/no), <code>TA Average KL:</code>. Any other <code>Key: Value</code> line is merged into the
+        Master Sheet above. Anything else is kept verbatim as a note — nothing is ever guessed or dropped.
+      </p>
+      <form id="data-input-form" class="form">
+        <label>Paste/type updates <textarea name="text" rows="4" placeholder="Status: Operational&#10;Dealer Name: New Dealer Pvt Ltd&#10;TA Average KL: 620&#10;Site visited 20-Jul, dealer requested extra signage"></textarea></label>
+        <button type="submit" class="btn btn--sm">Analyse &amp; apply</button>
+      </form>
+      <div id="data-input-result"></div>
+      ${renderDataInputNotes(dataNotes)}
+
       ${renderModernisationSection(o.id, o.status, report.modernisationRequests)}
     </section>`;
     qs("#comm-form").addEventListener("submit", async (e) => {
@@ -319,6 +332,19 @@ async function renderOutletDetail(id) {
         toast("Status updated");
         await renderOutletDetail(id);
     }));
+    qs("#data-input-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const data = formToObject(form);
+        try {
+            await api.post(`/outlets/${o.id}/data-input`, { text: data["text"] });
+            toast("Data applied");
+            await renderOutletDetail(id);
+        }
+        catch (err) {
+            qs("#data-input-result").innerHTML = `<p class="warn">${escapeHtml(err.message)}</p>`;
+        }
+    });
     wireOutletModernisationHandlers(o.id, report.modernisationRequests);
 }
 function renderTrafficSection(traffic) {
@@ -434,6 +460,23 @@ async function renderTradingAreaDetail(id) {
         </tbody>
       </table>
     </section>`;
+}
+function renderDataInputNotes(notes) {
+    if (!notes.length)
+        return `<p class="muted">No data submitted yet for this outlet.</p>`;
+    return `
+    <h4>Submission history</h4>
+    ${notes
+        .map((n) => `
+      <div class="ai-output">
+        <p class="muted">${new Date(n.submittedAt).toLocaleString()}</p>
+        <pre>${escapeHtml(n.rawText)}</pre>
+        ${n.structuredFieldUpdates.length ? `<p><strong>Applied:</strong> ${n.structuredFieldUpdates.map((u) => `${escapeHtml(u.field)}: ${escapeHtml(u.oldValue)} &rarr; ${escapeHtml(u.newValue)}`).join("; ")}</p>` : ""}
+        ${n.masterSheetUpdates.length ? `<p><strong>Master Sheet updated:</strong> ${n.masterSheetUpdates.map((u) => escapeHtml(u.key)).join(", ")}</p>` : ""}
+        ${n.freeTextNotes.length ? `<p><strong>Kept as note (not applied anywhere):</strong> ${n.freeTextNotes.map(escapeHtml).join("; ")}</p>` : ""}
+      </div>`)
+        .join("")}
+  `;
 }
 // Separate "tab" for one outlet's itemised fixed-asset report (SAP FAIL format).
 async function renderOutletFixedAssets(id) {
@@ -566,8 +609,98 @@ function stageBanner(stage) {
     ].indexOf(stage);
     return `<p class="badge badge--stage">Stage ${idx + 1}/12: ${escapeHtml(stage)}</p>`;
 }
+function selectOptions(options, current) {
+    return options.map((o) => `<option value="${escapeHtml(o)}" ${o === current ? "selected" : ""}>${escapeHtml(o || "(blank)")}</option>`).join("");
+}
+function taRowsToLines(rows) {
+    return rows.map((r) => `${r.roName} | ${r.distanceFromProposedKm ?? ""} | ${r.oilCo} | ${r.msKLPM} | ${r.hsdKLPM}`).join("\n");
+}
+function renderFeasibilityFormSection(c, f) {
+    return `
+    <h3>Feasibility Report <span class="muted">(real HPCL "Report on Feasibility: Proposed Retail Outlet" format)</span></h3>
+    <form id="feasibility-form" class="form">
+      <label>Location <input name="locationName" value="${escapeHtml(f.locationName)}" required /></label>
+      <label>District <input name="district" value="${escapeHtml(f.district)}" required /></label>
+      <label>State <input name="state" value="${escapeHtml(f.state)}" required /></label>
+      <label>1. Class of Market (A/B/C/D1(NH)/D2(SH)/E)
+        <select name="classOfMarket">${selectOptions(["A", "B", "C", "D1(NH)", "D2(SH)", "E"], f.classOfMarket)}</select>
+      </label>
+      <label>2. Existing Trading Area / Monopoly
+        <select name="existingTradingAreaOrMonopoly">${selectOptions(["Existing", "Monopoly", "New"], f.existingTradingAreaOrMonopoly)}</select>
+      </label>
+      <label>3. LSA / Remote Area <input name="lsaOrRemoteArea" value="${escapeHtml(f.lsaOrRemoteArea)}" placeholder="e.g. Remote AREA" /></label>
+
+      <label>4. Trading Area Potential — MS &amp; HSD sales from T.A. ROs for last 12 months (one per line: Name of RO | Distance km | Oil Co. (HPC/IOC/BPC/Pvt.) | MS KLPM | HSD KLPM)
+        <textarea name="taLines" rows="5">${escapeHtml(taRowsToLines(f.tradingAreaPotential))}</textarea>
+      </label>
+
+      <h4>5. Assessment of Potential of Proposed location</h4>
+      <label>a. Traffic <select name="trafficLevel">${selectOptions(["High", "Medium", "Low"], f.trafficLevel)}</select></label>
+      <label>Expected % Growth in Traffic <input name="expectedTrafficGrowthPct" type="number" step="any" value="${f.expectedTrafficGrowthPct}" /></label>
+      <label>Reason for Growth in Traffic <input name="reasonForTrafficGrowth" value="${escapeHtml(f.reasonForTrafficGrowth)}" /></label>
+
+      <label>b. Present TA Growth MS (KLPM) <input name="presentTAGrowthMsKLPM" type="number" step="any" value="${f.presentTAGrowthMsKLPM}" /></label>
+      <label>Present TA Growth HSD (KLPM) <input name="presentTAGrowthHsdKLPM" type="number" step="any" value="${f.presentTAGrowthHsdKLPM}" /></label>
+      <label>Expected % Growth in TA — MS <input name="expectedTAGrowthMsPct" type="number" step="any" value="${f.expectedTAGrowthMsPct}" /></label>
+      <label>Expected % Growth in TA — HSD <input name="expectedTAGrowthHsdPct" type="number" step="any" value="${f.expectedTAGrowthHsdPct}" /></label>
+      <label>Expected T.A. Potential in KLPM — MS <input name="expectedTAPotentialMsKLPM" type="number" step="any" value="${f.expectedTAPotentialMsKLPM}" /></label>
+      <label>Expected T.A. Potential in KLPM — HSD <input name="expectedTAPotentialHsdKLPM" type="number" step="any" value="${f.expectedTAPotentialHsdKLPM}" /></label>
+      <label>Whether proposed RO meets volume norms of the market
+        <select name="meetsVolumeNorms">${selectOptions(["", "Yes", "No"], f.meetsVolumeNorms)}</select>
+      </label>
+      <label>Reason for Anticipated Growth in Sales Vol. (MS/HSD) in the trading area
+        <input name="reasonForAnticipatedGrowth" value="${escapeHtml(f.reasonForAnticipatedGrowth)}" />
+      </label>
+
+      <label>c. Estimated Sales — 1st Year MS (KL/Month) <input name="estimatedSalesYear1Ms" type="number" step="any" value="${f.estimatedSalesYear1Ms}" /></label>
+      <label>1st Year HSD <input name="estimatedSalesYear1Hsd" type="number" step="any" value="${f.estimatedSalesYear1Hsd}" /></label>
+      <label>2nd Year MS <input name="estimatedSalesYear2Ms" type="number" step="any" value="${f.estimatedSalesYear2Ms}" /></label>
+      <label>2nd Year HSD <input name="estimatedSalesYear2Hsd" type="number" step="any" value="${f.estimatedSalesYear2Hsd}" /></label>
+      <label>3rd Year MS <input name="estimatedSalesYear3Ms" type="number" step="any" value="${f.estimatedSalesYear3Ms}" /></label>
+      <label>3rd Year HSD <input name="estimatedSalesYear3Hsd" type="number" step="any" value="${f.estimatedSalesYear3Hsd}" /></label>
+
+      <label>6. Market Intelligence if any (Proposed OMC activity, any other factor influencing Sales)
+        <textarea name="marketIntelligence">${escapeHtml(f.marketIntelligence)}</textarea>
+      </label>
+      <label>7. General Information (Any Site identified, Whether location considered earlier, etc.)
+        <textarea name="generalInformation">${escapeHtml(f.generalInformation)}</textarea>
+      </label>
+
+      <h4>8. Recommendation</h4>
+      <label>(a) Proposed RO Feasible as per Volume Norms (in 2nd year of operation) of the market (Yes/No)
+        <select name="feasibleAsPerVolumeNorms">${selectOptions(["", "Yes", "No"], f.feasibleAsPerVolumeNorms)}</select>
+      </label>
+      <label>May be included in SRMP (Y/N) <select name="mayBeIncludedInSrmp">${selectOptions(["", "Yes", "No"], f.mayBeIncludedInSrmp)}</select></label>
+      <label>If Yes, Regular or Rural <select name="regularOrRural">${selectOptions(["", "Regular", "Rural"], f.regularOrRural)}</select></label>
+
+      <h4>Lay Out Sketch of Proposed Location</h4>
+      <label>Road NO. (NH/SH/ Other Road No.) if any <input name="roadNo" value="${escapeHtml(f.roadNo)}" /></label>
+      <label>Stretch / Boundary of location <input name="stretchBoundary" value="${escapeHtml(f.stretchBoundary)}" /></label>
+      <label>From KM Stone <input name="kmStoneFrom" value="${escapeHtml(f.kmStoneFrom)}" /></label>
+      <label>To KM Stone <input name="kmStoneTo" value="${escapeHtml(f.kmStoneTo)}" /></label>
+      <label>Distance from prominent land mark <input name="distanceFromLandmark" value="${escapeHtml(f.distanceFromLandmark)}" /></label>
+      <label>Identification of boundary / stretch <input name="boundaryIdentification" value="${escapeHtml(f.boundaryIdentification)}" /></label>
+      <label>Any other information <input name="otherInfo" value="${escapeHtml(f.otherInfo)}" /></label>
+      <label>Divided / Un-divided carriageway
+        <select name="carriagewayType">${selectOptions(["Divided carriageway", "Undivided carriageway"], f.carriagewayType)}</select>
+      </label>
+      <label>Distance of nearby RO from the proposed RO Location <input name="nearbyRODistanceNote" value="${escapeHtml(f.nearbyRODistanceNote)}" /></label>
+
+      <label>Prepared by <input name="preparedBy" value="${escapeHtml(f.preparedBy)}" required /></label>
+      <label>Designation <input name="designation" value="${escapeHtml(f.designation)}" required /></label>
+      <label>Report date <input name="reportDate" type="date" value="${escapeHtml(f.reportDate)}" /></label>
+
+      <button type="submit" class="btn">Save &amp; generate feasibility report</button>
+    </form>
+    ${c.feasibilityReport
+        ? `<pre class="ai-output">${escapeHtml(c.feasibilityReport.text)}</pre>
+           <p><a class="btn btn--sm" href="/api/cases/${c.id}/feasibility-report.pdf" target="_blank">⬇ Download feasibility report PDF</a></p>`
+        : ""}
+  `;
+}
 async function renderCaseDetail(id) {
     const c = await api.get(`/cases/${id}`);
+    const feasibilityForm = await api.get(`/cases/${id}/feasibility-form`);
     const sections = [];
     sections.push(`<a href="#/cases">&larr; All cases</a><h2>${escapeHtml(c.stretchName)}</h2>${stageBanner(c.stage)}`);
     sections.push(`<p>${escapeHtml(c.salesArea)} · KML: ${escapeHtml(c.kmlFileName ?? "-")}${c.caseType === "Resitement" ? " · <strong>Resitement case</strong>" : ""}</p><p>${escapeHtml(c.competitorContext)}</p>`);
@@ -603,9 +736,10 @@ async function renderCaseDetail(id) {
       </label>
       <button type="submit" class="btn">Save roster</button>
     </form>
-    <button id="gen-feasibility" class="btn">Generate feasibility report (AI)</button>
-    ${c.feasibilityReport ? `<pre class="ai-output">${escapeHtml(c.feasibilityReport.text)}</pre>` : ""}
   `);
+    // Feasibility Report — structured, matches HPCL's real "Report on Feasibility: Proposed Retail
+    // Outlet" form exactly (section numbers/labels below mirror that form).
+    sections.push(renderFeasibilityFormSection(c, feasibilityForm));
     // Application (field set mirrors HPCL's real "Application for Retail Outlet Dealership" form)
     sections.push(`
     <h3>Application intake</h3>
@@ -1236,8 +1370,43 @@ function wireCaseHandlers(c) {
         toast("Roster saved");
         await renderCaseDetail(c.id);
     }));
-    on("#gen-feasibility", (el) => el.addEventListener("click", async () => {
-        await api.post(`/cases/${c.id}/feasibility`);
+    on("#feasibility-form", (el) => el.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const data = formToObject(e.target);
+        const tradingAreaPotential = (data.taLines ?? "")
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .map((l) => {
+            const [roName, distance, oilCo, ms, hsd] = l.split("|").map((s) => s.trim());
+            return {
+                roName: roName ?? "",
+                distanceFromProposedKm: distance ? Number(distance) : undefined,
+                oilCo: oilCo ?? "",
+                msKLPM: Number(ms) || 0,
+                hsdKLPM: Number(hsd) || 0,
+            };
+        });
+        const numericFields = [
+            "expectedTrafficGrowthPct",
+            "presentTAGrowthMsKLPM",
+            "presentTAGrowthHsdKLPM",
+            "expectedTAGrowthMsPct",
+            "expectedTAGrowthHsdPct",
+            "expectedTAPotentialMsKLPM",
+            "expectedTAPotentialHsdKLPM",
+            "estimatedSalesYear1Ms",
+            "estimatedSalesYear1Hsd",
+            "estimatedSalesYear2Ms",
+            "estimatedSalesYear2Hsd",
+            "estimatedSalesYear3Ms",
+            "estimatedSalesYear3Hsd",
+        ];
+        const body = { ...data, tradingAreaPotential };
+        delete body["taLines"];
+        for (const f of numericFields)
+            body[f] = Number(data[f]) || 0;
+        await api.post(`/cases/${c.id}/feasibility-form`, body);
         toast("Feasibility report generated");
         await renderCaseDetail(c.id);
     }));
@@ -1541,7 +1710,36 @@ async function renderCockpit() {
         .map((e) => `<tr><td>${e.date}</td><td>${escapeHtml(e.type)}</td><td>${e.linkedCaseId ? `<a href="#/cases/${e.linkedCaseId}">${escapeHtml(e.title)}</a>` : escapeHtml(e.title)}</td><td>${escapeHtml(e.salesArea)}</td></tr>`)
         .join("") || "<tr><td colspan='4'>Calendar is clear.</td></tr>"}</tbody>
       </table>
+
+      <h3>Completed work — calendar record <span class="muted">(dropped off the to-do lists above the moment they're marked Done)</span></h3>
+      <label>Browse by date
+        <select id="completed-date-select">
+          <option value="">All dates</option>
+          ${snap.completedLog.map((g) => `<option value="${g.date}">${g.date} (${g.items.length})</option>`).join("")}
+        </select>
+      </label>
+      <div id="completed-log">${renderCompletedLog(snap.completedLog)}</div>
     </section>`;
+    qs("#completed-date-select").addEventListener("change", (e) => {
+        const date = e.target.value;
+        const filtered = date ? snap.completedLog.filter((g) => g.date === date) : snap.completedLog;
+        qs("#completed-log").innerHTML = renderCompletedLog(filtered);
+    });
+}
+function renderCompletedLog(groups) {
+    if (!groups.length)
+        return `<p class="muted">Nothing marked done yet.</p>`;
+    return groups
+        .map((g) => `
+    <h4>${escapeHtml(g.date)}</h4>
+    <ul>${g.items
+        .map((it) => {
+        const href = linkedRecordHref(it.linkedModule, it.linkedRecordId);
+        const label = href ? `<a href="${href}">${escapeHtml(it.title)}</a>` : escapeHtml(it.title);
+        return `<li>${label} <span class="muted">(${escapeHtml(it.source)}, completed ${it.completedAt.slice(11, 16)})</span></li>`;
+    })
+        .join("")}</ul>`)
+        .join("");
 }
 // ---------------------------------------------------------------------------
 // Module 6 — Knowledge Centre

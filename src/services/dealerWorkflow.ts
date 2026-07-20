@@ -12,12 +12,14 @@ import type {
   MilestoneStatus,
   GanttTask,
   Outlet,
+  FeasibilityReportForm,
 } from "../types.js";
 import { store, nextId, freshMilestones } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 import { matchClauses } from "./policyBot.js";
 import { ASC_CHECKLIST_TEMPLATE, LEC_EVALUATION_TEMPLATE, FVC_ITEMS_TEMPLATE, formatAscReport, formatLecReport, formatFvcReport } from "./dsgForms.js";
 import { extractApplicationFormFields, type ExtractionResult } from "./formExtraction.js";
+import { defaultFeasibilityReportForm, renderFeasibilityReportText } from "./feasibilityReport.js";
 
 export class WorkflowError extends Error {}
 
@@ -126,17 +128,21 @@ export function setRoster(caseId: string, entries: Omit<RosterEntry, "id">[]): D
   return c;
 }
 
-export async function generateFeasibilityReport(caseId: string): Promise<DealerCase> {
+/** Prefill for the feasibility-report form — real trading-area data where on file, blank elsewhere. */
+export function getFeasibilityReportForm(caseId: string): FeasibilityReportForm {
   const c = getCase(caseId);
-  const text = await getAiEngine().generate("feasibilityReport", {
-    stretchName: c.stretchName,
-    competitorContext: c.competitorContext,
-    roster: c.roster,
-  });
-  const feasible = c.roster.some((r) => r.feasible);
+  return c.feasibilityReportForm ?? defaultFeasibilityReportForm(c);
+}
+
+/** Saves the SO's feasibility-report form and renders it in the exact real HPCL document format. */
+export function saveFeasibilityReportForm(caseId: string, form: FeasibilityReportForm): DealerCase {
+  const c = getCase(caseId);
+  c.feasibilityReportForm = form;
+  const text = renderFeasibilityReportText(form);
+  const feasible = form.feasibleAsPerVolumeNorms === "Yes";
   c.feasibilityReport = { text, feasible, generatedAt: new Date().toISOString() };
   c.stage = "FeasibilityReport";
-  store.logActivity(c, "AI", "Feasibility report generated", feasible ? "Feasible" : "Not feasible");
+  store.logActivity(c, "SO", "Feasibility report generated", feasible ? "Feasible" : "Not feasible");
   return c;
 }
 

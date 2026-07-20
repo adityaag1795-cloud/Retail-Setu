@@ -7,6 +7,8 @@ import { monthlyKL, dryDayCount, outletTankStock } from "../services/predictive.
 import { requestsForOutlet } from "../services/dealerDesk.js";
 import * as wf from "../services/dealerWorkflow.js";
 import * as mod from "../services/modernisation.js";
+import { hasTrafficData, trafficForOutlet, vehicleTypeTotals, productTotals, peakHour, nozzleStatusForOutlet } from "../services/trafficAnalytics.js";
+import type { ActionPoint } from "../types.js";
 
 function outletOrThrow(id: string) {
   const o = store.outlets.get(id);
@@ -50,6 +52,17 @@ export function registerOutletRoutes(router: Router) {
     const outlet = outletOrThrow(params["id"]!);
     const comms = [...store.communications.values()].filter((c) => c.outletId === outlet.id);
     const linkedCase = outlet.linkedCaseId ? store.dealerCases.get(outlet.linkedCaseId) : undefined;
+    const tradingArea = outlet.tradingAreaId ? store.tradingAreas.get(outlet.tradingAreaId) : undefined;
+    const actionPoints = [...store.actionPoints.values()].filter((a) => a.outletId === outlet.id).sort((a, b) => b.date.localeCompare(a.date));
+    const traffic = hasTrafficData(outlet.id)
+      ? {
+          vehicleTypeTotals: vehicleTypeTotals(outlet.id),
+          productTotals: productTotals(outlet.id),
+          peakHour: peakHour(outlet.id),
+          nozzles: nozzleStatusForOutlet(outlet.id),
+          daysOnFile: trafficForOutlet(outlet.id).length,
+        }
+      : undefined;
     sendJson(res, 200, {
       outlet,
       masterSheetTable: Object.entries(outlet.masterSheet).map(([field, value]) => ({ field, value })),
@@ -61,6 +74,9 @@ export function registerOutletRoutes(router: Router) {
       dealerRequests: requestsForOutlet(outlet.id),
       modernisationRequests: outlet.modernisationRequests,
       linkedCase: linkedCase ? { id: linkedCase.id, stage: linkedCase.stage } : undefined,
+      tradingArea: tradingArea ? { id: tradingArea.id, name: tradingArea.name } : undefined,
+      actionPoints,
+      traffic,
     });
   });
 
@@ -201,5 +217,45 @@ export function registerOutletRoutes(router: Router) {
       "content-length": pdf.length,
     });
     res.end(pdf);
+  });
+
+  // Action Points / Minutes of Meeting — SO's own memory + follow-up tracker per outlet.
+  router.get("/api/outlets/:id/action-points", (_req, res, params) => {
+    const outlet = outletOrThrow(params["id"]!);
+    sendJson(
+      res,
+      200,
+      [...store.actionPoints.values()].filter((a) => a.outletId === outlet.id).sort((a, b) => b.date.localeCompare(a.date)),
+    );
+  });
+
+  router.post("/api/outlets/:id/action-points", async (req, res, params) => {
+    const outlet = outletOrThrow(params["id"]!);
+    const body = await readJsonBody<Partial<ActionPoint>>(req);
+    if (!body.title || !body.raisedBy) throw new ApiError(400, "title and raisedBy are required");
+    const point: ActionPoint = {
+      id: nextId("AP"),
+      outletId: outlet.id,
+      date: body.date ?? new Date().toISOString().slice(0, 10),
+      raisedBy: body.raisedBy,
+      title: body.title,
+      notes: body.notes ?? "",
+      actionRequired: body.actionRequired,
+      owner: body.owner,
+      dueDate: body.dueDate,
+      status: body.status ?? "Open",
+      createdAt: new Date().toISOString(),
+    };
+    store.actionPoints.set(point.id, point);
+    sendJson(res, 201, point);
+  });
+
+  router.put("/api/outlets/:id/action-points/:apId", async (req, res, params) => {
+    outletOrThrow(params["id"]!);
+    const point = store.actionPoints.get(params["apId"]!);
+    if (!point || point.outletId !== params["id"]) throw new ApiError(404, "Action point not found");
+    const body = await readJsonBody<Partial<ActionPoint>>(req);
+    Object.assign(point, body);
+    sendJson(res, 200, point);
   });
 }

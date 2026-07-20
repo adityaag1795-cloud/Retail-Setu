@@ -1,6 +1,16 @@
 import type { Outlet, SalesRecord, TankStock, AnalyticsAnswer, TaskItem } from "../types.js";
 import { store, nextId } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
+import {
+  hasTrafficData,
+  vehicleTypeTotals,
+  productTotals,
+  peakHour,
+  nozzleStatusForOutlet,
+  outletsWithInactiveNozzles,
+  VEHICLE_TYPE_LABELS,
+} from "./trafficAnalytics.js";
+import type { VehicleType } from "../types.js";
 
 const LOOKBACK_DAYS = 60;
 
@@ -156,6 +166,27 @@ export function syncPredictiveAlerts(): void {
       );
     }
   }
+  for (const { outletId, nozzles } of outletsWithInactiveNozzles()) {
+    const outlet = store.outlets.get(outletId);
+    if (!outlet) continue;
+    const title = `Possibly inactive DU(s) — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      const list = nozzles.map((n) => `Pump ${n.pumpNo}/Nozzle ${n.nozzleNo} (last transaction ${n.lastTransactionAt.slice(0, 10)})`).join(", ");
+      createOutletTask(outlet, title, `${outlet.name}: ${nozzles.length} dispensing unit(s) look inactive per the DU transaction log — ${list}. Verify if genuinely down.`, "High", true);
+    }
+  }
+}
+
+/** Finds an outlet mentioned by name in free text — used by askAnalytics for outlet-specific intents. */
+function matchOutletInText(text: string): Outlet | undefined {
+  const lower = text.toLowerCase();
+  let best: Outlet | undefined;
+  for (const outlet of store.outlets.values()) {
+    if (lower.includes(outlet.name.toLowerCase())) {
+      if (!best || outlet.name.length > best.name.length) best = outlet;
+    }
+  }
+  return best;
 }
 
 /** "Ask anything" analytical query — rule-based intent matching over the SO's most common questions. */
@@ -163,8 +194,55 @@ export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
   const q = question.toLowerCase();
   let resultSummary: string;
   let matchedOutletIds: string[] = [];
+  const mentionedOutlet = matchOutletInText(question);
 
-  if (q.includes("below") && (q.includes("ta") || q.includes("trading area"))) {
+  if (q.includes("peak") && (q.includes("hour") || q.includes("time"))) {
+    if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+      const peak = peakHour(mentionedOutlet.id)!;
+      matchedOutletIds = [mentionedOutlet.id];
+      resultSummary = `${mentionedOutlet.name}: peak hour is ${peak.hour}:00-${peak.hour + 1}:00 with ${peak.transactions} transactions (real DU transaction log).`;
+    } else if (mentionedOutlet) {
+      resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't determine peak hours. Upload one via the Input Tap on the Outlet Repository page.`;
+    } else {
+      const withData = [...store.outlets.values()].filter((o) => hasTrafficData(o.id));
+      resultSummary = withData.length
+        ? `Peak-hour analysis is available for: ${withData.map((o) => o.name).join(", ")}. Ask "peak hour at <outlet name>".`
+        : `No outlet has DU transaction data uploaded yet — nothing to compute peak hours from.`;
+    }
+  } else if (q.includes("du") || q.includes("nozzle") || q.includes("dispensing unit") || q.includes("pump")) {
+    if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+      const nozzles = nozzleStatusForOutlet(mentionedOutlet.id);
+      const inactive = nozzles.filter((n) => n.possiblyInactive);
+      matchedOutletIds = [mentionedOutlet.id];
+      resultSummary = inactive.length
+        ? `${mentionedOutlet.name}: ${inactive.length} of ${nozzles.length} DU(s) look inactive — ${inactive.map((n) => `Pump ${n.pumpNo}/Nozzle ${n.nozzleNo} (last transaction ${n.lastTransactionAt.slice(0, 10)})`).join(", ")}. The rest are transacting normally.`
+        : `${mentionedOutlet.name}: all ${nozzles.length} DU(s) show recent transactions — no inactivity detected in the real transaction log.`;
+    } else if (mentionedOutlet) {
+      resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't assess DU status.`;
+    } else {
+      const flagged = outletsWithInactiveNozzles();
+      resultSummary = flagged.length
+        ? `${flagged.length} outlet(s) have a possibly-inactive DU: ${flagged.map((f) => store.outlets.get(f.outletId)?.name ?? f.outletId).join(", ")}.`
+        : `No possibly-inactive DUs detected across outlets with transaction data on file.`;
+    }
+  } else if (q.includes("traffic") || q.includes("vehicle") || q.includes("wheeler") || q.includes("hmv") || q.includes("bowser")) {
+    if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+      const totals = vehicleTypeTotals(mentionedOutlet.id);
+      matchedOutletIds = [mentionedOutlet.id];
+      resultSummary = `${mentionedOutlet.name} traffic pattern (real DU log): ${(Object.keys(totals) as VehicleType[]).map((vt) => `${VEHICLE_TYPE_LABELS[vt]} ${totals[vt].transactions} txns (${totals[vt].volumeKL.toFixed(1)} KL)`).join(", ")}.`;
+    } else if (mentionedOutlet) {
+      resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't show a traffic pattern. Upload one via the Input Tap.`;
+    } else {
+      const withData = [...store.outlets.values()].filter((o) => hasTrafficData(o.id));
+      resultSummary = withData.length
+        ? `Traffic-pattern data is available for: ${withData.map((o) => o.name).join(", ")}. Ask "traffic pattern at <outlet name>".`
+        : `No outlet has DU transaction data uploaded yet.`;
+    }
+  } else if ((q.includes("fuel") || q.includes("ms") || q.includes("hsd")) && (q.includes("pattern") || q.includes("trend")) && mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+    const totals = productTotals(mentionedOutlet.id);
+    matchedOutletIds = [mentionedOutlet.id];
+    resultSummary = `${mentionedOutlet.name} fuel sales pattern (real DU log): ${Object.entries(totals).map(([p, c]) => `${p} — ${c.transactions} txns, ${c.volumeKL.toFixed(1)} KL, Rs ${c.amountRs.toLocaleString("en-IN")}`).join("; ")}.`;
+  } else if (q.includes("below") && (q.includes("ta") || q.includes("trading area"))) {
     const rows = outletsBelowTA();
     matchedOutletIds = rows.map((r) => r.outlet.id);
     resultSummary = rows.length

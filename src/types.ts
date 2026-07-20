@@ -43,12 +43,61 @@ export interface Outlet {
   commissionedDate?: string;
   linkedCaseId?: ID; // link back to the Module 2 DealerCase that created this outlet, if any
   /**
+   * TradingAreaSnapshot.id of the trading-area cluster this outlet competes within — a group of
+   * HPCL + competitor OMC outlets sharing the same catchment, per HPCL's own Market Share report.
+   * Distinct from `taAverageKL` above (this outlet's own monthly trading-area potential
+   * benchmark). Real data exists for a handful of outlets so far — see `seedTradingAreas` in
+   * data/seed.ts — and is left blank elsewhere rather than guessed.
+   */
+  tradingAreaId?: ID;
+  /**
    * Modernisation-request sub-workflow (Canopy/Driveway/DU/Tank/Electric Panel) — available to
    * any operational outlet, not only ones this system commissioned. Initiated by the dealer via
    * Module 7's Dealer Request Desk; each entry then sits "for recommendation" here until the SO
    * adds a justification, verifies/edits the cost estimate and IRR, and decides.
    */
   modernisationRequests: ModernisationRequest[];
+}
+
+/**
+ * Real dealer-wise competitive Market Share report for one named trading area (HPCL's own
+ * Network Planning "For the Month" export) — MS/HSD/Total-Market-Fuel volume and market share
+ * for every OMC's outlet sharing that catchment, not just HPCL's own.
+ */
+export interface TradingAreaDealerFigures {
+  dealerName: string;
+  omc: string; // as reported: "HPCL" | "BPCL" | "IOCL" etc.
+  outletId?: ID; // matched to one of our own outlets, where it is one
+  msVolumeKL: number; // latest FY, monthly
+  hsdVolumeKL: number;
+  tmfVolumeKL: number; // Total Market Fuel (MS+HSD)
+  msMarketSharePct: number;
+  hsdMarketSharePct: number;
+  tmfMarketSharePct: number;
+}
+
+export interface TradingAreaSnapshot {
+  id: ID;
+  name: string;
+  month: string;
+  dealers: TradingAreaDealerFigures[];
+}
+
+export type ActionPointStatus = "Open" | "InProgress" | "Done";
+
+/** SO's own action points / minutes-of-meeting memory against an outlet — for follow-up, not just a log. */
+export interface ActionPoint {
+  id: ID;
+  outletId: ID;
+  date: string;
+  raisedBy: string;
+  title: string;
+  notes: string;
+  actionRequired?: string;
+  owner?: string;
+  dueDate?: string;
+  status: ActionPointStatus;
+  createdAt: string;
 }
 
 /** Field names mirror HPCL's real SAP Fixed Asset Individual Listing (FAIL) export. */
@@ -546,6 +595,41 @@ export interface TankStock {
   pumpableStockLtr: number;
   ullageLtr: number;
   source: "CRIS";
+}
+
+/**
+ * Vehicle-type classification, by transaction amount, per the real DU/RELCON automation feed —
+ * SO's own real thresholds: <Rs 500 Two-Wheeler, Rs 500-10,000 Four-Wheeler, Rs 10,000-100,000
+ * HMV (heavy motor vehicle), >Rs 100,000 Bowser supply.
+ */
+export type VehicleType = "TwoWheeler" | "FourWheeler" | "HMV" | "BowserSupply";
+
+export interface VehicleTypeCount {
+  transactions: number;
+  volumeKL: number;
+  amountRs: number;
+}
+
+/** Day-wise real traffic pattern at one outlet, derived from its DU transaction log. */
+export interface DailyTrafficSummary {
+  outletId: ID;
+  date: string;
+  byVehicleType: Record<VehicleType, VehicleTypeCount>;
+  byProduct: Record<string, VehicleTypeCount>;
+  /** Transaction count per hour of day, index 0-23 — drives peak-hour analysis. */
+  hourlyTransactionCounts: number[];
+}
+
+/** Per-nozzle (DU) activity — lets the SO see if every dispensing unit is actually operating. */
+export interface NozzleActivity {
+  outletId: ID;
+  pumpNo: string;
+  nozzleNo: string;
+  transactionCount: number;
+  firstTransactionAt: string;
+  lastTransactionAt: string;
+  /** True if this nozzle has gone quiet for several days while others at the same outlet keep transacting. */
+  possiblyInactive: boolean;
 }
 
 export interface AnalyticsQuery {

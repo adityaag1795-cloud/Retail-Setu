@@ -84,6 +84,9 @@ async function route() {
       case "dealer-desk":
         id ? await renderDealerRequestDetail(id) : await renderDealerDesk();
         break;
+      case "trading-areas":
+        id ? await renderTradingAreaDetail(id) : await renderTradingAreasList();
+        break;
       default:
         app().innerHTML = `<p>Unknown section.</p>`;
     }
@@ -128,6 +131,7 @@ async function renderOutlets() {
       <div class="form--inline">
         <label>Sales snapshot <input id="upload-sales-file" type="file" accept=".xlsx,.csv" /></label>
         <label>Stock snapshot <input id="upload-stock-file" type="file" accept=".xlsx,.csv" /></label>
+        <label>Transaction report (DU log) <input id="upload-transactions-file" type="file" accept=".xlsx" /></label>
       </div>
       <div id="upload-result" class="muted"></div>
 
@@ -164,6 +168,7 @@ async function renderOutlets() {
 
   wireDataUploadInput("#upload-sales-file", "/data-uploads/sales");
   wireDataUploadInput("#upload-stock-file", "/data-uploads/stock");
+  wireDataUploadInput("#upload-transactions-file", "/data-uploads/transactions");
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -205,6 +210,11 @@ async function renderOutletDetail(id: string) {
       <a href="#/outlets">&larr; All outlets</a>
       <h2>${escapeHtml(o.name)}</h2>
       <p>${escapeHtml(o.salesArea)} · ${escapeHtml(o.district)} · ${escapeHtml(o.status)} · Dealer: ${escapeHtml(o.dealerName ?? "-")}</p>
+      ${
+        report.tradingArea
+          ? `<p>Trading Area: <a href="#/trading-areas/${report.tradingArea.id}">${escapeHtml(report.tradingArea.name)}</a></p>`
+          : ""
+      }
       <p><a class="btn" href="/api/outlets/${o.id}/report.pdf" target="_blank">⬇ Download one-pager PDF</a></p>
 
       <h3>Master Sheet</h3>
@@ -240,6 +250,9 @@ async function renderOutletDetail(id: string) {
             .join("")}</tbody></table>`
           : `<p class="muted">No live tank-stock feed for this outlet.</p>`
       }
+
+      <h3>Traffic pattern &amp; DU status <span class="muted">(real DU transaction log)</span></h3>
+      ${renderTrafficSection(report.traffic)}
 
       ${
         report.linkedCase
@@ -285,6 +298,18 @@ async function renderOutletDetail(id: string) {
         <button type="submit" class="btn">Save communication</button>
       </form>
 
+      <h3>Action Points / Minutes of Meeting</h3>
+      ${renderActionPointsSection(report.actionPoints)}
+      <form id="action-point-form" class="form">
+        <label>Raised by <input name="raisedBy" required /></label>
+        <label>Title <input name="title" required /></label>
+        <label>Notes / minutes <textarea name="notes"></textarea></label>
+        <label>Action required <input name="actionRequired" /></label>
+        <label>Owner <input name="owner" /></label>
+        <label>Due date <input name="dueDate" type="date" /></label>
+        <button type="submit" class="btn btn--sm">Add action point</button>
+      </form>
+
       ${renderModernisationSection(o.id, o.status, report.modernisationRequests)}
     </section>`;
 
@@ -303,7 +328,160 @@ async function renderOutletDetail(id: string) {
     await renderOutletDetail(id);
   });
 
+  qs("#action-point-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const data = formToObject(form) as any;
+    if (!data.actionRequired) delete data.actionRequired;
+    if (!data.owner) delete data.owner;
+    if (!data.dueDate) delete data.dueDate;
+    await api.post(`/outlets/${o.id}/action-points`, data);
+    toast("Action point added");
+    await renderOutletDetail(id);
+  });
+
+  qsa(".action-point-status").forEach((el) =>
+    el.addEventListener("change", async (e) => {
+      const select = e.target as HTMLSelectElement;
+      const apId = select.dataset["apId"]!;
+      await api.put(`/outlets/${o.id}/action-points/${apId}`, { status: select.value });
+      toast("Status updated");
+      await renderOutletDetail(id);
+    }),
+  );
+
   wireOutletModernisationHandlers(o.id, report.modernisationRequests);
+}
+
+function renderTrafficSection(traffic: any): string {
+  if (!traffic) {
+    return `<p class="muted">No DU transaction data uploaded for this outlet yet — upload one via the Input Tap on the Outlet Repository page.</p>`;
+  }
+  const vt = traffic.vehicleTypeTotals;
+  const vtLabels: Record<string, string> = { TwoWheeler: "Two-Wheeler", FourWheeler: "Four-Wheeler", HMV: "HMV", BowserSupply: "Bowser supply" };
+  const inactive = traffic.nozzles.filter((n: any) => n.possiblyInactive);
+  return `
+    <p class="muted">${traffic.daysOnFile} day(s) of real transaction data on file.</p>
+    <table class="table">
+      <thead><tr><th>Vehicle type</th><th>Transactions</th><th>Volume (KL)</th><th>Amount (Rs.)</th></tr></thead>
+      <tbody>
+        ${Object.keys(vt)
+          .map((k) => `<tr><td>${vtLabels[k] ?? k}</td><td>${vt[k].transactions}</td><td>${vt[k].volumeKL.toFixed(1)}</td><td>${vt[k].amountRs.toLocaleString("en-IN")}</td></tr>`)
+          .join("")}
+      </tbody>
+    </table>
+    ${
+      traffic.peakHour
+        ? `<p>Peak hour: <strong>${traffic.peakHour.hour}:00-${traffic.peakHour.hour + 1}:00</strong> (${traffic.peakHour.transactions} transactions)</p>`
+        : ""
+    }
+    <h4>DU (dispensing unit) status</h4>
+    <table class="table">
+      <thead><tr><th>Pump</th><th>Nozzle</th><th>Transactions</th><th>Last transaction</th><th>Status</th></tr></thead>
+      <tbody>
+        ${traffic.nozzles
+          .map(
+            (n: any) =>
+              `<tr><td>${escapeHtml(n.pumpNo)}</td><td>${escapeHtml(n.nozzleNo)}</td><td>${n.transactionCount}</td><td>${n.lastTransactionAt.slice(0, 10)}</td><td>${n.possiblyInactive ? '<span class="badge badge--escalated">Possibly inactive</span>' : '<span class="badge badge--resolved">Active</span>'}</td></tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>
+    ${inactive.length ? `<p class="warn">⚠️ ${inactive.length} DU(s) look inactive — verify if genuinely down.</p>` : ""}
+  `;
+}
+
+function renderActionPointsSection(actionPoints: any[]): string {
+  if (!actionPoints.length) return `<p class="muted">No action points on file for this outlet yet.</p>`;
+  return `
+    <table class="table">
+      <thead><tr><th>Date</th><th>Title</th><th>Raised by</th><th>Action required</th><th>Owner</th><th>Due</th><th>Status</th></tr></thead>
+      <tbody>
+        ${actionPoints
+          .map(
+            (a: any) => `<tr>
+          <td>${escapeHtml(a.date)}</td>
+          <td>${escapeHtml(a.title)}${a.notes ? `<br/><span class="muted">${escapeHtml(a.notes)}</span>` : ""}</td>
+          <td>${escapeHtml(a.raisedBy)}</td>
+          <td>${escapeHtml(a.actionRequired ?? "-")}</td>
+          <td>${escapeHtml(a.owner ?? "-")}</td>
+          <td>${escapeHtml(a.dueDate ?? "-")}</td>
+          <td><select class="action-point-status" data-ap-id="${a.id}">
+            ${["Open", "InProgress", "Done"].map((s) => `<option value="${s}" ${a.status === s ? "selected" : ""}>${s}</option>`).join("")}
+          </select></td>
+        </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>`;
+}
+
+// ---------------------------------------------------------------------------
+// Module 1 — Trading Area one-page snapshot
+// ---------------------------------------------------------------------------
+
+async function renderTradingAreasList() {
+  const areas = await api.get("/trading-areas");
+  app().innerHTML = `
+    <section class="panel">
+      <a href="#/outlets">&larr; All outlets</a>
+      <h2>Trading Areas</h2>
+      <p class="muted">Real HPCL Market Share reports group dealers (HPCL + competitor OMCs) into shared catchments. Click through for the one-page snapshot.</p>
+      <div class="grid-cards">
+        ${areas
+          .map(
+            (a: any) => `<a class="card" href="#/trading-areas/${a.id}">
+          <h3>${escapeHtml(a.name)}</h3>
+          <p class="muted">${escapeHtml(a.month)} &middot; ${a.dealerCount} dealer(s) on file</p>
+        </a>`,
+          )
+          .join("") || "<p class='muted'>No trading areas on file yet.</p>"}
+      </div>
+    </section>`;
+}
+
+async function renderTradingAreaDetail(id: string) {
+  const area = await api.get(`/trading-areas/${id}`);
+  app().innerHTML = `
+    <section class="panel">
+      <a href="#/trading-areas">&larr; All trading areas</a>
+      <h2>${escapeHtml(area.name)}</h2>
+      <p class="muted">${escapeHtml(area.month)} snapshot &middot; real HPCL Market Share report, dealer-wise MS/HSD/TMF</p>
+
+      <h3>Our outlets in this trading area</h3>
+      <div class="grid-cards">
+        ${area.outlets
+          .map(
+            (o: any) => `<a class="card" href="#/outlets/${o.id}">
+          <h3>${escapeHtml(o.name)}</h3>
+          <p>${escapeHtml(o.salesArea)} &middot; ${escapeHtml(o.status)}</p>
+          <p class="muted">${escapeHtml(o.dealerName ?? "No dealer on record")}</p>
+        </a>`,
+          )
+          .join("") || "<p class='muted'>No outlets of ours mapped to this trading area yet.</p>"}
+      </div>
+
+      <h3>Competitive dealer-wise market share (${escapeHtml(area.month)})</h3>
+      <table class="table">
+        <thead><tr><th>Dealer</th><th>OMC</th><th>MS (KL)</th><th>MS share %</th><th>HSD (KL)</th><th>HSD share %</th><th>TMF (KL)</th><th>TMF share %</th></tr></thead>
+        <tbody>
+          ${area.dealers
+            .map(
+              (d: any) => `<tr${d.omc === "HPCL" ? ' class="row--highlight"' : ""}>
+            <td>${d.outletId ? `<a href="#/outlets/${d.outletId}">${escapeHtml(d.dealerName)}</a>` : escapeHtml(d.dealerName)}</td>
+            <td>${escapeHtml(d.omc)}</td>
+            <td>${d.msVolumeKL.toFixed(1)}</td>
+            <td>${d.msMarketSharePct.toFixed(1)}%</td>
+            <td>${d.hsdVolumeKL.toFixed(1)}</td>
+            <td>${d.hsdMarketSharePct.toFixed(1)}%</td>
+            <td>${d.tmfVolumeKL.toFixed(1)}</td>
+            <td>${d.tmfMarketSharePct.toFixed(1)}%</td>
+          </tr>`,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </section>`;
 }
 
 // Separate "tab" for one outlet's itemised fixed-asset report (SAP FAIL format).

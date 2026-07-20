@@ -13,6 +13,10 @@ import type {
   Milestone,
   MilestoneKey,
   ActivityEntry,
+  DailyTrafficSummary,
+  NozzleActivity,
+  ActionPoint,
+  TradingAreaSnapshot,
 } from "./types.js";
 import {
   seedOutlets,
@@ -23,7 +27,9 @@ import {
   seedPolicyClauses,
   seedDealerCases,
   seedDealerRequests,
+  seedTradingAreas,
 } from "./data/seed.js";
+import { SEED_DAILY_TRAFFIC, SEED_NOZZLE_ACTIVITY } from "./data/trafficData.js";
 
 let counter = 10000;
 export function nextId(prefix: string): string {
@@ -56,16 +62,23 @@ class Store {
   policyClauses = new Map<string, PolicyClause>();
   dealerCases = new Map<string, DealerCase>();
   dealerRequests = new Map<string, DealerRequest>();
+  dailyTraffic: DailyTrafficSummary[] = [];
+  nozzleActivity: NozzleActivity[] = [];
+  actionPoints = new Map<string, ActionPoint>();
+  tradingAreas = new Map<string, TradingAreaSnapshot>();
 
   constructor() {
     seedOutlets.forEach((o) => this.outlets.set(o.id, o));
     seedCommunications.forEach((c) => this.communications.set(c.id, c));
     this.salesRecords = [...seedSalesRecords];
     this.stockSnapshots = [...seedStockSnapshots];
+    this.dailyTraffic = [...SEED_DAILY_TRAFFIC];
+    this.nozzleActivity = [...SEED_NOZZLE_ACTIVITY];
     seedTeam.forEach((t) => this.team.set(t.id, t));
     seedPolicyClauses.forEach((p) => this.policyClauses.set(p.id, p));
     seedDealerCases.forEach((c) => this.dealerCases.set(c.id, c));
     seedDealerRequests.forEach((r) => this.dealerRequests.set(r.id, r));
+    seedTradingAreas.forEach((t) => this.tradingAreas.set(t.id, t));
     this.seedDerivedTasks();
   }
 

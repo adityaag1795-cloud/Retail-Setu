@@ -14,6 +14,7 @@ import { registerKnowledgeRoutes } from "./routes/knowledge.js";
 import { registerKmlRoutes } from "./routes/kml.js";
 import { registerDealerDeskRoutes } from "./routes/dealerDesk.js";
 import { registerDataUploadRoutes } from "./routes/dataUpload.js";
+import { registerTradingAreaRoutes } from "./routes/tradingAreas.js";
 import { getAiEngine } from "./services/aiEngine.js";
 import { applyPersistedOverridesOnStartup } from "./services/dataUpload.js";
 
@@ -31,6 +32,7 @@ registerKnowledgeRoutes(router);
 registerKmlRoutes(router);
 registerDealerDeskRoutes(router);
 registerDataUploadRoutes(router);
+registerTradingAreaRoutes(router);
 
 applyPersistedOverridesOnStartup();
 

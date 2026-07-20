@@ -7,6 +7,7 @@ import type {
   PolicyClause,
   DealerCase,
   DealerRequest,
+  TradingAreaSnapshot,
 } from "../types.js";
 import { FAIL_LEDGER } from "./failLedger.js";
 
@@ -2805,6 +2806,38 @@ export const seedCommunications: Communication[] = [
     scanCopy: true,
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Module 1 — Trading Areas (real HPCL Network Planning "Market Share" report)
+// ---------------------------------------------------------------------------
+
+// Real dealer-wise MS/HSD/TMF volume + market-share figures for one trading area (Jun, FY26-27),
+// covering the NIT/Bata Chowk cluster of Faridabad Retail SA — the only trading area a source
+// report was supplied for. 4 of the 7 dealers are our own outlets (matched by name); the other 3
+// are competitor OMC outlets sharing the same catchment, kept for the competitive picture.
+export const seedTradingAreas: TradingAreaSnapshot[] = [
+  {
+    id: "TA-NIT-BATACHOWK",
+    name: "Faridabad Retail SA — NIT / Bata Chowk Belt",
+    month: "Jun",
+    dealers: [
+      { dealerName: "HP Service Center Faridabad", omc: "HPCL", outletId: "OUT-41068065", msVolumeKL: 570.0, hsdVolumeKL: 198.0, tmfVolumeKL: 768.0, msMarketSharePct: 18.92, hsdMarketSharePct: 7.84, tmfMarketSharePct: 13.86 },
+      { dealerName: "Raj Auto Service", omc: "HPCL", outletId: "OUT-41056957", msVolumeKL: 355.0, hsdVolumeKL: 585.0, tmfVolumeKL: 940.0, msMarketSharePct: 11.78, hsdMarketSharePct: 23.15, tmfMarketSharePct: 16.97 },
+      { dealerName: "Sunder Service Station", omc: "HPCL", outletId: "OUT-41056574", msVolumeKL: 490.0, hsdVolumeKL: 696.0, tmfVolumeKL: 1186.0, msMarketSharePct: 16.26, hsdMarketSharePct: 27.54, tmfMarketSharePct: 21.41 },
+      { dealerName: "The Auto Supply Company", omc: "HPCL", outletId: "OUT-41056955", msVolumeKL: 620.0, hsdVolumeKL: 260.0, tmfVolumeKL: 880.0, msMarketSharePct: 20.58, hsdMarketSharePct: 10.29, tmfMarketSharePct: 15.88 },
+      { dealerName: "Tara Chand Saluja & Sons", omc: "BPCL", msVolumeKL: 262.0, hsdVolumeKL: 102.0, tmfVolumeKL: 364.0, msMarketSharePct: 8.70, hsdMarketSharePct: 4.04, tmfMarketSharePct: 6.57 },
+      { dealerName: "Auto Care - Faridabad", omc: "IOCL", msVolumeKL: 297.0, hsdVolumeKL: 393.0, tmfVolumeKL: 690.0, msMarketSharePct: 9.86, hsdMarketSharePct: 15.55, tmfMarketSharePct: 12.45 },
+      { dealerName: "City Motors", omc: "IOCL", msVolumeKL: 419.0, hsdVolumeKL: 293.0, tmfVolumeKL: 712.0, msMarketSharePct: 13.91, hsdMarketSharePct: 11.59, tmfMarketSharePct: 12.85 },
+    ],
+  },
+];
+
+const TRADING_AREA_OUTLET_IDS = new Set(["OUT-41068065", "OUT-41056957", "OUT-41056574", "OUT-41056955"]);
+for (const outlet of seedOutlets) {
+  if (TRADING_AREA_OUTLET_IDS.has(outlet.id)) {
+    outlet.tradingAreaId = "TA-NIT-BATACHOWK";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Module 4 — Team (real names from the routing chain of the Roopendra file

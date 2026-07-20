@@ -1,6 +1,6 @@
 import type { Router } from "../httpUtil.js";
 import { sendJson, readJsonBody, ApiError } from "../httpUtil.js";
-import { uploadSalesSnapshot, uploadStockSnapshot, DataUploadError } from "../services/dataUpload.js";
+import { uploadSalesSnapshot, uploadStockSnapshot, uploadTransactionReport, DataUploadError } from "../services/dataUpload.js";
 
 async function wrap<T>(fn: () => T): Promise<T> {
   try {
@@ -26,5 +26,13 @@ export function registerDataUploadRoutes(router: Router) {
     const body = await readJsonBody<{ fileName: string; text?: string; base64?: string }>(req);
     if (!body.fileName || (!body.text && !body.base64)) throw new ApiError(400, "fileName and (text or base64) are required");
     sendJson(res, 200, await wrap(() => uploadStockSnapshot(body.fileName, { text: body.text, base64: body.base64 })));
+  });
+
+  // Real DU/RELCON automation "Transaction Report" export (.xlsx only) — derives day-wise
+  // vehicle-type traffic pattern, fuel-wise sales pattern, peak hours, and per-DU activity.
+  router.post("/api/data-uploads/transactions", async (req, res) => {
+    const body = await readJsonBody<{ fileName: string; base64?: string }>(req);
+    if (!body.fileName || !body.base64) throw new ApiError(400, "fileName and base64 are required");
+    sendJson(res, 200, await wrap(() => uploadTransactionReport(body.fileName, { base64: body.base64 })));
   });
 }

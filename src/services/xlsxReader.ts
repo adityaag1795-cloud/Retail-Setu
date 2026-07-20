@@ -106,6 +106,21 @@ export function parseXlsxFirstSheet(buf: Buffer): ParsedSheet {
   return { header: (header ?? []).map((h) => String(h ?? "").trim()), rows };
 }
 
+/**
+ * Same as parseXlsxFirstSheet but returns every row raw, with no header/data split — for real
+ * fixed-layout exports (like the RELCON DU transaction report) whose header isn't row 1.
+ */
+export function parseXlsxAllRows(buf: Buffer): (string | number | null)[][] {
+  const entries = readZipEntries(buf);
+  const sharedStringsEntry = entries.find((e) => e.name === "xl/sharedStrings.xml");
+  const sharedStrings = sharedStringsEntry ? parseSharedStrings(sharedStringsEntry.data.toString("utf-8")) : [];
+  const sheetEntry =
+    entries.find((e) => e.name === "xl/worksheets/sheet1.xml") ??
+    entries.filter((e) => /^xl\/worksheets\/sheet\d+\.xml$/.test(e.name)).sort((a, b) => a.name.localeCompare(b.name))[0];
+  if (!sheetEntry) throw new Error("No worksheet found in the uploaded .xlsx file");
+  return parseSheetRows(sheetEntry.data.toString("utf-8"), sharedStrings);
+}
+
 /** Parses a simple CSV (comma-separated, quote-aware) into the same header + rows shape. */
 export function parseCsv(text: string): ParsedSheet {
   const lines = text.split(/\r\n|\n/).filter((l) => l.trim().length > 0);

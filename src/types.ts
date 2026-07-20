@@ -215,12 +215,15 @@ export interface ApplicationForm {
  */
 export type YesNo = "Yes" | "No" | "";
 
+/** Many Annexure V items only apply to certain applicant types (Group/Partnership/Non-Individual/Category) — N.A. is a real, distinct answer from No. */
+export type AscAnswer = "Yes" | "No" | "N.A." | "";
+
 /** Annexure V eligibility checklist (19 objective items + free-text deficiencies + recommendation). */
 export interface AscChecklistItem {
   id: string; // Annexure V S.No, e.g. "1".."19"
   particular: string;
   applicability: string;
-  answer: YesNo;
+  answer: AscAnswer;
 }
 
 export type AscRecommendation =

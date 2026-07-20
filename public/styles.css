@@ -119,9 +119,9 @@ a { color: var(--accent); }
 .badge--mediumimportance { background: var(--accent); color: white; border: none; }
 .badge--lowimportance { background: var(--panel); }
 
-.table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
-.table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.table th { color: var(--muted); font-weight: 600; width: 220px; }
+.table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; border: 1px solid var(--border); }
+.table th, .table td { text-align: left; padding: 8px 10px; border: 1px solid var(--border); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 600; width: 220px; background: var(--panel-2); }
 
 .form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; max-width: 560px; }
 .form--inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
@@ -161,7 +161,13 @@ a { color: var(--accent); }
   white-space: pre-wrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.85rem;
+  line-height: 1.6em;
   margin-top: 10px;
+  /* Reports (feasibility, ASC/LEC/FVC, file notes, etc.) are plain preformatted text with
+     column-aligned tables baked into the string — ruled lines make that alignment readable
+     without rewriting every generator into real HTML tables. */
+  background-image: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 0, rgba(255, 255, 255, 0.07) 1px, transparent 1px, transparent 1.6em);
+  background-position: 0 14px;
 }
 
 .log { list-style: none; padding: 0; font-size: 0.85rem; }

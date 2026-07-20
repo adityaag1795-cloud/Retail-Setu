@@ -1177,6 +1177,10 @@ const FVC_ITEMS = [
 function yesNoSelect(name) {
     return `<select name="${name}"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option></select>`;
 }
+/** ASC checklist items are frequently conditional on applicant type (Group/Partnership/Category/Non-Individual) — N.A. is a real, distinct answer from No. */
+function ascAnswerSelect(name) {
+    return `<select name="${name}"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option><option value="N.A.">N.A.</option></select>`;
+}
 function renderAscBlock(c) {
     const existing = c.inspections.asc;
     if (existing) {
@@ -1191,7 +1195,7 @@ function renderAscBlock(c) {
       <p class="muted">Application No. ${escapeHtml(c.application.applicationNo)} · ${escapeHtml(c.application.applicantName)} · Category ${escapeHtml(c.application.applicantCategory)} — auto-populated from the Application above.</p>
       <form id="asc-form" class="form">
         <table class="table"><thead><tr><th>#</th><th>Particulars</th><th>Applicability</th><th>Answer</th></tr></thead>
-        <tbody>${ASC_CHECKLIST.map((it) => `<tr><td>${it.id}</td><td>${escapeHtml(it.particular)}</td><td>${escapeHtml(it.applicability)}</td><td>${yesNoSelect(`item_${it.id}`)}</td></tr>`).join("")}</tbody></table>
+        <tbody>${ASC_CHECKLIST.map((it) => `<tr><td>${it.id}</td><td>${escapeHtml(it.particular)}</td><td>${escapeHtml(it.applicability)}</td><td>${ascAnswerSelect(`item_${it.id}`)}</td></tr>`).join("")}</tbody></table>
         <label>Rectifiable deficiencies (one per line) <textarea name="rectifiable"></textarea></label>
         <label>Non-rectifiable deficiencies (one per line) <textarea name="nonRectifiable"></textarea></label>
         <label>Recommendation of ASC

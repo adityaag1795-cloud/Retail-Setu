@@ -5,6 +5,7 @@ import type {
   ApplicationForm,
   AscResult,
   AscRecommendation,
+  AscAnswer,
   LecResult,
   FvcResult,
   YesNo,
@@ -185,7 +186,7 @@ function applicationOrThrow(c: DealerCase): ApplicationForm {
 
 export function submitAsc(
   caseId: string,
-  itemAnswers: Record<string, YesNo>,
+  itemAnswers: Record<string, AscAnswer>,
   rectifiableDeficiencies: string[],
   nonRectifiableDeficiencies: string[],
   recommendation: AscRecommendation,

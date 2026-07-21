@@ -1580,12 +1580,25 @@ function wireCaseHandlers(c) {
 // ---------------------------------------------------------------------------
 // Module 3 — Predictive Analysis
 // ---------------------------------------------------------------------------
-async function renderAnalytics() {
-    const summary = await api.get("/analytics/summary");
+async function renderAnalytics(salesSummaryOutletId) {
+    const [summary, outlets, salesSummary] = await Promise.all([
+        api.get("/analytics/summary"),
+        api.get("/outlets"),
+        api.get(`/analytics/sales-area-summary${salesSummaryOutletId ? `?outletId=${salesSummaryOutletId}` : ""}`),
+    ]);
     app().innerHTML = `
     <section class="panel">
       <h2>Predictive Analysis</h2>
       <p class="muted">Sales feed shown as fetched from CRIS. Analytical dashboard for the Sales Officer — ask anything.</p>
+
+      <h3>Sales Area Summary <span class="muted">(real data — current month &amp; year to date)</span></h3>
+      <label>Scope
+        <select id="sales-summary-outlet-select">
+          <option value="">All outlets (Faridabad SA)</option>
+          ${outlets.map((o) => `<option value="${o.id}" ${o.id === salesSummaryOutletId ? "selected" : ""}>${escapeHtml(o.name)}</option>`).join("")}
+        </select>
+      </label>
+      ${renderSalesAreaSummarySection(salesSummary)}
 
       <div class="grid-cards">
         <div class="card"><h3>Below TA average</h3><p class="big">${summary.belowTA.length}</p><ul>${summary.belowTA.map((x) => `<li>${escapeHtml(x.name)}: ${x.actualKL} / ${x.taAverageKL} KL</li>`).join("")}</ul></div>
@@ -1619,6 +1632,32 @@ async function renderAnalytics() {
         if (data["question"])
             await ask(data["question"]);
     });
+    qs("#sales-summary-outlet-select").addEventListener("change", (e) => {
+        const id = e.target.value;
+        renderAnalytics(id || undefined);
+    });
+}
+function renderSalesAreaSummarySection(rows) {
+    if (!rows.length)
+        return `<p class="muted">No real DSR data on file for this scope yet.</p>`;
+    return `
+    <table class="table">
+      <thead><tr><th>Product</th><th colspan="3">Current month (${escapeHtml(rows[0].currentMonthLabel)})</th><th colspan="3">Year to date</th></tr>
+      <tr><th></th><th>Target (LY)</th><th>Achieved</th><th>% Covered</th><th>Target (LY)</th><th>Achieved</th><th>% Covered</th></tr></thead>
+      <tbody>
+        ${rows
+        .map((r) => `<tr>
+          <td>${escapeHtml(r.product)} <span class="muted">(${escapeHtml(r.unit)})</span></td>
+          <td>${r.currentMonth.target.toFixed(2)}</td>
+          <td>${r.currentMonth.achieved.toFixed(2)}</td>
+          <td>${r.currentMonth.coveragePct != null ? `${r.currentMonth.coveragePct}%` : "-"}</td>
+          <td>${r.yearToDate.target.toFixed(2)}</td>
+          <td>${r.yearToDate.achieved.toFixed(2)}</td>
+          <td>${r.yearToDate.coveragePct != null ? `${r.yearToDate.coveragePct}%` : "-"}</td>
+        </tr>`)
+        .join("")}
+      </tbody>
+    </table>`;
 }
 // ---------------------------------------------------------------------------
 // Module 4 — Teams Communication

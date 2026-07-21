@@ -83,3 +83,35 @@ export function kpiTracker(outletId?: string): KpiProductSummary[] {
     };
   }).filter((p) => p.months.length > 0);
 }
+
+export interface SalesAreaPeriodFigure {
+  achieved: number;
+  target: number;
+  coveragePct: number | null;
+}
+
+export interface SalesAreaProductSummary {
+  product: string;
+  unit: string;
+  currentMonthLabel: string;
+  currentMonth: SalesAreaPeriodFigure;
+  yearToDate: SalesAreaPeriodFigure;
+}
+
+/**
+ * Module 3 sales-area summary — current month and year-to-date real actuals (target = last
+ * year's same-period actual), derived from the same per-product KPI data. outletId scopes to
+ * one outlet; omit for the whole set of outlets carrying real DSR data.
+ */
+export function salesAreaSummary(outletId?: string): SalesAreaProductSummary[] {
+  return kpiTracker(outletId).map((p) => {
+    const last = p.months[p.months.length - 1]!;
+    return {
+      product: p.product,
+      unit: p.unit,
+      currentMonthLabel: last.label,
+      currentMonth: { achieved: last.achieved, target: last.target, coveragePct: last.coveragePct },
+      yearToDate: { achieved: p.yoyAchieved, target: p.yoyTarget, coveragePct: p.yoyCoveragePct },
+    };
+  });
+}

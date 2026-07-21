@@ -57,6 +57,33 @@ export interface Outlet {
    * adds a justification, verifies/edits the cost estimate and IRR, and decides.
    */
   modernisationRequests: ModernisationRequest[];
+  /**
+   * Real month-wise LY (last FY, Apr-Mar) vs CY (current FY-to-date) volumes per product, from
+   * HPCL's own DSR workbook (LY/CY MS, HSD, LUBE sheets; LY POWER; DEF). Feeds both the outlet
+   * page's product comparison table and the Module 4 KPI tracker (LY month = that month's
+   * target). Real data exists for outlets present in the DSR — left undefined elsewhere rather
+   * than guessed. See data/productComparisonData.ts.
+   */
+  productComparison?: OutletProductComparison;
+}
+
+/** One month's real volume for a product — KL for MS/HSD/LUBE/DEF, units for POWER. */
+export interface MonthlyFigure {
+  month: string; // "YYYY-MM"
+  value: number;
+}
+
+export interface ProductMonthlySeries {
+  ly: MonthlyFigure[]; // last FY, Apr-Mar, used as the KPI tracker's target baseline
+  cy: MonthlyFigure[]; // current FY to date, the "achieved" figure
+}
+
+export interface OutletProductComparison {
+  ms: ProductMonthlySeries;
+  hsd: ProductMonthlySeries;
+  lube: ProductMonthlySeries;
+  power: ProductMonthlySeries;
+  def: ProductMonthlySeries;
 }
 
 /**

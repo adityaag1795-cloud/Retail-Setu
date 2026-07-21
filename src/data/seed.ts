@@ -10,6 +10,7 @@ import type {
   TradingAreaSnapshot,
 } from "../types.js";
 import { FAIL_LEDGER } from "./failLedger.js";
+import { SEED_PRODUCT_COMPARISON } from "./productComparisonData.js";
 
 /**
  * SEED DATA.
@@ -2836,6 +2837,15 @@ const TRADING_AREA_OUTLET_IDS = new Set(["OUT-41068065", "OUT-41056957", "OUT-41
 for (const outlet of seedOutlets) {
   if (TRADING_AREA_OUTLET_IDS.has(outlet.id)) {
     outlet.tradingAreaId = "TA-NIT-BATACHOWK";
+  }
+}
+
+// Real month-wise LY vs CY product comparison (MS/HSD/LUBE/POWER/DEF) from HPCL's DSR
+// workbook — joined by SAP Code, same as the FAIL ledger and Trading Area data above.
+for (const outlet of seedOutlets) {
+  const sapCode = outlet.masterSheet["SAP Code"];
+  if (sapCode && SEED_PRODUCT_COMPARISON[sapCode]) {
+    outlet.productComparison = SEED_PRODUCT_COMPARISON[sapCode];
   }
 }
 

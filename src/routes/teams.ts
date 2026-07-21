@@ -4,10 +4,19 @@ import { store, nextId } from "../store.js";
 import type { TaskItem, MemoryNote } from "../types.js";
 import { stuckMilestones } from "../services/dealerWorkflow.js";
 import { criticalOpenRequests } from "../services/dealerDesk.js";
+import { kpiTracker } from "../services/kpiTracker.js";
 
 export function registerTeamRoutes(router: Router) {
   router.get("/api/team", (_req, res) => {
     sendJson(res, 200, [...store.team.values()]);
+  });
+
+  // KPI Tracker — target = last year's real monthly actual (per product), achieved = this
+  // year's real actual so far; ?outletId= scopes to one outlet, omit for all outlets combined.
+  router.get("/api/kpi-tracker", (req, res) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const outletId = url.searchParams.get("outletId") ?? undefined;
+    sendJson(res, 200, kpiTracker(outletId));
   });
 
   router.get("/api/tasks", (_req, res) => {

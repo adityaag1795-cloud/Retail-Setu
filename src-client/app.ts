@@ -254,6 +254,9 @@ async function renderOutletDetail(id: string) {
       <h3>Traffic pattern &amp; DU status <span class="muted">(real DU transaction log)</span></h3>
       ${renderTrafficSection(report.traffic)}
 
+      <h3>Product-wise LY vs CY comparison <span class="muted">(real DSR data — last FY vs current FY to date)</span></h3>
+      ${renderProductComparisonSection(o.productComparison)}
+
       ${
         report.linkedCase
           ? `<h3>Linked Dealer Case (Module 2)</h3><p><a href="#/cases/${report.linkedCase.id}">${report.linkedCase.id}</a> — stage: ${escapeHtml(report.linkedCase.stage)}</p>`
@@ -415,6 +418,59 @@ function renderTrafficSection(traffic: any): string {
     </table>
     ${inactive.length ? `<p class="warn">⚠️ ${inactive.length} DU(s) look inactive — verify if genuinely down.</p>` : ""}
   `;
+}
+
+const PRODUCT_COMPARISON_LABELS: { key: string; label: string; unit: string }[] = [
+  { key: "ms", label: "MS (Petrol)", unit: "KL" },
+  { key: "hsd", label: "HSD (Diesel)", unit: "KL" },
+  { key: "lube", label: "Lube", unit: "KL" },
+  { key: "power", label: "Power", unit: "units" },
+  { key: "def", label: "DEF", unit: "KL" },
+];
+
+function monthShortLabel(m: string): string {
+  const [y, mo] = m.split("-").map(Number);
+  return new Date(y!, mo! - 1, 1).toLocaleString("en-IN", { month: "short", year: "2-digit" });
+}
+
+function renderProductComparisonSection(pc: any): string {
+  if (!pc) return `<p class="muted">No real DSR product-comparison data on file for this outlet.</p>`;
+  const tables = PRODUCT_COMPARISON_LABELS.map(({ key, label, unit }) => {
+    const series = pc[key];
+    if (!series || (!series.ly.length && !series.cy.length)) return "";
+    const n = Math.max(series.ly.length, series.cy.length);
+    // "YTD" totals only sum LY over the same months CY has actually reached — comparing a
+    // full 12-month LY total against a partial CY-to-date total would be a like-for-unlike mismatch.
+    let lyYtdTotal = 0;
+    let cyTotal = 0;
+    const rows: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const ly = series.ly[i];
+      const cy = series.cy[i];
+      const monthKey = ly?.month ?? cy?.month;
+      const lyVal: number | null = ly?.value ?? null;
+      const cyVal: number | null = cy?.value ?? null;
+      if (cyVal != null) {
+        cyTotal += cyVal;
+        if (lyVal != null) lyYtdTotal += lyVal;
+      }
+      const growth = lyVal != null && cyVal != null && lyVal > 0 ? `${(((cyVal - lyVal) / lyVal) * 100).toFixed(1)}%` : "-";
+      rows.push(
+        `<tr><td>${monthKey ? monthShortLabel(monthKey) : "-"}</td><td>${lyVal != null ? lyVal.toFixed(2) : "-"}</td><td>${cyVal != null ? cyVal.toFixed(2) : "-"}</td><td>${growth}</td></tr>`,
+      );
+    }
+    const growthTotal = lyYtdTotal > 0 && cyTotal > 0 ? `${(((cyTotal - lyYtdTotal) / lyYtdTotal) * 100).toFixed(1)}%` : "-";
+    return `
+      <h4>${escapeHtml(label)} <span class="muted">(${unit})</span></h4>
+      <table class="table">
+        <thead><tr><th>Month</th><th>LY (target)</th><th>CY (achieved)</th><th>Growth</th></tr></thead>
+        <tbody>
+          ${rows.join("")}
+          <tr><td><strong>YoY (to date)</strong></td><td><strong>${lyYtdTotal.toFixed(2)}</strong></td><td><strong>${cyTotal.toFixed(2)}</strong></td><td><strong>${growthTotal}</strong></td></tr>
+        </tbody>
+      </table>`;
+  }).filter(Boolean);
+  return tables.join("") || `<p class="muted">No real DSR product-comparison data on file for this outlet.</p>`;
 }
 
 function renderActionPointsSection(actionPoints: any[]): string {
@@ -1768,14 +1824,15 @@ async function renderAnalytics() {
 // Module 4 — Teams Communication
 // ---------------------------------------------------------------------------
 
-async function renderTeams() {
-  const [team, tasks, notes, openWork, outlets, cases] = await Promise.all([
+async function renderTeams(kpiOutletId?: string) {
+  const [team, tasks, notes, openWork, outlets, cases, kpi] = await Promise.all([
     api.get("/team"),
     api.get("/tasks"),
     api.get("/memory-notes"),
     api.get("/teams/open-workflows"),
     api.get("/outlets"),
     api.get("/cases"),
+    api.get(`/kpi-tracker${kpiOutletId ? `?outletId=${kpiOutletId}` : ""}`),
   ]);
   const memberName = (id: string) => team.find((t: any) => t.id === id)?.name ?? id;
 
@@ -1783,6 +1840,15 @@ async function renderTeams() {
     <section class="panel">
       <h2>Teams Communication</h2>
       <p class="muted">Sales-area summary, KPI tracker, task assignment, open workflows &amp; proposals.</p>
+
+      <h3>KPI Tracker <span class="muted">(target = real last-year actual, achieved = this year to date)</span></h3>
+      <label>Scope
+        <select id="kpi-outlet-select">
+          <option value="">All outlets (Faridabad SA)</option>
+          ${outlets.map((o: any) => `<option value="${o.id}" ${o.id === kpiOutletId ? "selected" : ""}>${escapeHtml(o.name)}</option>`).join("")}
+        </select>
+      </label>
+      ${renderKpiTrackerSection(kpi)}
 
       <h3>Open cases in progress</h3>
       <ul>
@@ -1905,6 +1971,32 @@ async function renderTeams() {
     toast("Note saved");
     await renderTeams();
   });
+
+  qs("#kpi-outlet-select").addEventListener("change", (e) => {
+    const id = (e.target as HTMLSelectElement).value;
+    renderTeams(id || undefined);
+  });
+}
+
+function renderKpiTrackerSection(kpi: any[]): string {
+  if (!kpi.length) return `<p class="muted">No real DSR data on file for this scope yet.</p>`;
+  return kpi
+    .map(
+      (p) => `
+    <h4>${escapeHtml(p.product)} <span class="muted">(${p.unit})</span></h4>
+    <table class="table">
+      <thead><tr><th>Month</th><th>Target (LY)</th><th>Achieved (CY)</th><th>% Covered</th></tr></thead>
+      <tbody>
+        ${p.months
+          .map(
+            (m: any) => `<tr><td>${escapeHtml(m.label)}</td><td>${m.target.toFixed(2)}</td><td>${m.achieved.toFixed(2)}</td><td>${m.coveragePct != null ? `${m.coveragePct}%` : "-"}</td></tr>`,
+          )
+          .join("")}
+        <tr><td><strong>YoY (to date)</strong></td><td><strong>${p.yoyTarget.toFixed(2)}</strong></td><td><strong>${p.yoyAchieved.toFixed(2)}</strong></td><td><strong>${p.yoyCoveragePct != null ? `${p.yoyCoveragePct}%` : "-"}</strong></td></tr>
+      </tbody>
+    </table>`,
+    )
+    .join("");
 }
 
 // ---------------------------------------------------------------------------

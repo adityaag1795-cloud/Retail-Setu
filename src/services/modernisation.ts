@@ -152,6 +152,37 @@ export function buildDefaultCostEstimate(type: ModernisationType): CostEstimate 
   });
 }
 
+/**
+ * Combined cost estimate for a brand-new Retail Outlet's Budget Approval — unlike a single
+ * modernisation request (one of Canopy/Driveway/DU/Tank/ElectricPanel), a new site build needs
+ * all of these real rate-card categories together, so every one is included as a starting line
+ * item for the SO to adjust to the actual site plan.
+ */
+export function buildDefaultNroCostEstimate(): CostEstimate {
+  const types: ModernisationType[] = ["Canopy", "Driveway", "DU", "Tank", "ElectricPanel"];
+  const lineItems: CostEstimateLineItem[] = types.flatMap((t) =>
+    rateCardFor(t).map((r) => ({
+      id: nextId("CEL"),
+      description: `${r.description} (${t})`,
+      depreciationBucket: r.depreciationBucket,
+      qty: r.defaultQty,
+      uom: r.uom,
+      rate: r.rate,
+      amount: 0,
+    })),
+  );
+  return recomputeCostEstimate({
+    lineItems,
+    gstRatePct: DEFAULT_GST_RATE_PCT,
+    gstNonCreditablePct: HARYANA_GST_NON_CREDITABLE_PCT,
+    subtotal: 0,
+    gstAddback: 0,
+    totalInvestment: 0,
+    civilAmount: 0,
+    plantMachineryAmount: 0,
+  });
+}
+
 export function defaultIrrAssumptions(): IrrAssumptions {
   return {
     incrementalVolumeKLPerMonth: 0,

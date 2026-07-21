@@ -206,6 +206,21 @@ export interface RosterEntry {
 }
 
 /**
+ * A person who has expressed interest in a stretch before (or instead of) a formal Application
+ * Form intake — captured early during Stretch Identification so the SO has a record of who's
+ * interested, on what land, and how to reach them, ahead of the roster/feasibility stage.
+ */
+export interface InterestedApplicant {
+  id: ID;
+  name: string;
+  stretchName: string;
+  landDetails: string;
+  category: string;
+  mobileNo: string;
+  addedAt: string;
+}
+
+/**
  * Field set mirrors HPCL's real "Application for Retail Outlet Dealership" form
  * (individual applicant) — category/group/land-schedule fields drive Dealer
  * Selection Guideline eligibility checks downstream.
@@ -343,6 +358,18 @@ export interface FvcVerificationItem {
   comments: string;
 }
 
+/**
+ * Record of a scanned/offline ASC, LEC or FVC report attached to the case for audit purposes —
+ * same best-effort raw-text extraction as the Application Form upload (formExtraction.ts), but
+ * without field-specific mapping: these three reports have no single fixed layout to pattern-match
+ * against, so the file is kept as a reference document rather than auto-filling the checklist.
+ */
+export interface InspectionUploadRecord {
+  fileName: string;
+  uploadedAt: string;
+  textPreview: string;
+}
+
 export interface FvcResult {
   kind: "FVC";
   /** Auto-populated from ApplicationForm / case. */
@@ -458,13 +485,16 @@ export type MilestoneKey =
 export type MilestoneStatus = "Pending" | "InProgress" | "Done" | "Stuck";
 
 export interface Milestone {
-  key: MilestoneKey;
+  /** One of the fixed MilestoneKey values, or a generated id for an SO-added custom milestone (see `custom`). */
+  key: MilestoneKey | string;
   label: string;
   status: MilestoneStatus;
   date?: string;
   notes?: string;
   /** For DeptForwarding — which departments it was routed to. */
   departments?: string[];
+  /** True for a milestone the SO added by hand (e.g. a specific department's NOC) rather than one of the fixed six. */
+  custom?: boolean;
 }
 
 export interface CustomerMasterSync {
@@ -474,10 +504,17 @@ export interface CustomerMasterSync {
   syncedAt?: string;
 }
 
+/**
+ * Budget approval for a New Retail Outlet — same real cost-estimate + IRR engine used for
+ * modernisation requests (services/modernisation.ts): a combined line-item cost estimate across
+ * every real rate-card category (Civil Works, Driveway, DU, Tank, Electric Panel — a new site
+ * needs all of them, unlike a single modernisation ask), and IRR computed from the volume the SO
+ * envisages the new outlet will do, not entered as raw numbers.
+ */
 export interface BudgetApproval {
-  costEstimate: number;
-  irr: number;
-  noteText: string;
+  costEstimate: CostEstimate;
+  irr?: IrrResult;
+  noteText?: string;
   status: "Draft" | "Submitted" | "Approved" | "Rejected";
   approvedAt?: string;
 }
@@ -712,6 +749,7 @@ export interface DealerCase {
   createdAt: string;
   outletId?: ID; // set once the case produces/links to an Outlet
   resitement?: ResitementDetails;
+  interestedApplicants: InterestedApplicant[];
 
   feasibilityReportForm?: FeasibilityReportForm;
   feasibilityReport?: {
@@ -737,6 +775,12 @@ export interface DealerCase {
     asc?: AscResult;
     lec?: LecResult;
     fvc?: FvcResult;
+  };
+  /** Scanned/offline ASC, LEC or FVC reports attached for the record — see InspectionUploadRecord. */
+  inspectionUploads?: {
+    asc?: InspectionUploadRecord;
+    lec?: InspectionUploadRecord;
+    fvc?: InspectionUploadRecord;
   };
   loiFileNoteForm?: LoiFileNoteForm;
   fileNote?: FileNote;

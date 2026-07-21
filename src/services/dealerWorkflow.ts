@@ -9,12 +9,14 @@ import type {
   LecResult,
   FvcResult,
   YesNo,
-  MilestoneKey,
   MilestoneStatus,
   GanttTask,
   Outlet,
   FeasibilityReportForm,
   LoiFileNoteForm,
+  IrrAssumptions,
+  BudgetApproval,
+  CostEstimate,
 } from "../types.js";
 import { store, nextId, freshMilestones } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
@@ -23,6 +25,7 @@ import { ASC_CHECKLIST_TEMPLATE, LEC_EVALUATION_TEMPLATE, FVC_ITEMS_TEMPLATE, fo
 import { extractApplicationFormFields, extractRawTextFromUpload, type ExtractionResult } from "./formExtraction.js";
 import { defaultFeasibilityReportForm, renderFeasibilityReportText } from "./feasibilityReport.js";
 import { defaultLoiFileNoteForm, renderLoiFileNoteText } from "./loiFileNote.js";
+import { buildDefaultNroCostEstimate, recomputeCostEstimate, computeIrr, defaultIrrAssumptions } from "./modernisation.js";
 
 export class WorkflowError extends Error {}
 
@@ -63,6 +66,7 @@ export function createCase(input: {
     competitorContext: input.competitorContext,
     stage: "StretchIdentification",
     createdAt: new Date().toISOString(),
+    interestedApplicants: [],
     roster: [],
     inspections: {},
     milestones: [],
@@ -90,6 +94,26 @@ export function createCase(input: {
     input.stretchName,
   );
   return dealerCase;
+}
+
+// Interested applicants who come forward for a stretch before (or instead of) a formal Application
+// Form intake — a simple record so the SO doesn't lose track of who to follow up with.
+export function addInterestedApplicant(
+  caseId: string,
+  entry: { name: string; stretchName: string; landDetails: string; category: string; mobileNo: string },
+): DealerCase {
+  const c = getCase(caseId);
+  c.interestedApplicants.push({
+    id: nextId("IA"),
+    name: entry.name,
+    stretchName: entry.stretchName || c.stretchName,
+    landDetails: entry.landDetails,
+    category: entry.category,
+    mobileNo: entry.mobileNo,
+    addedAt: new Date().toISOString(),
+  });
+  store.logActivity(c, "SO", "Interested applicant added", entry.name);
+  return c;
 }
 
 // Resitement-only: appoint the technical evaluation committee and generate its report (HQO circular
@@ -175,6 +199,30 @@ export function recordApplicationFormUpload(caseId: string, fileName: string, up
   };
   store.logActivity(c, "SO", "Application form uploaded", `${fileName} — ${c.applicationFormUpload.extractedFieldsCount} field(s) extracted`);
   return { case: c, extraction };
+}
+
+/**
+ * Attaches a scanned/offline ASC, LEC or FVC report to the case for the record. Unlike the
+ * Application Form upload, this does not attempt field-specific extraction — these three reports
+ * don't share one fixed layout to pattern-match, so guessing checklist answers from arbitrary text
+ * would risk fabricating findings. The real text (where recoverable) is kept as a preview only.
+ */
+export function recordInspectionUpload(
+  caseId: string,
+  kind: "asc" | "lec" | "fvc",
+  fileName: string,
+  uploadOpts: { text?: string; base64?: string },
+): DealerCase {
+  const c = getCase(caseId);
+  const rawText = extractRawTextFromUpload(fileName, uploadOpts);
+  c.inspectionUploads = c.inspectionUploads ?? {};
+  c.inspectionUploads[kind] = {
+    fileName,
+    uploadedAt: new Date().toISOString(),
+    textPreview: rawText.slice(0, 2000),
+  };
+  store.logActivity(c, "SO", `${kind.toUpperCase()} report uploaded`, fileName);
+  return c;
 }
 
 // Step 4 — ASC / LEC / FVC inspections, in the real DSG Annexure V / W1 / Y formats.
@@ -399,10 +447,20 @@ export async function generateLOI(caseId: string): Promise<DealerCase> {
   return c;
 }
 
-// Step 7 — 2-way milestone tracking through to NOC.
+// Step 7 — 2-way milestone tracking through to NOC. Beyond the fixed six milestones, the SO can
+// add ad-hoc ones (e.g. a specific department's NOC not covered by DeptForwarding) — see
+// addCustomMilestone below.
+export function addCustomMilestone(caseId: string, label: string): DealerCase {
+  const c = getCase(caseId);
+  if (!label.trim()) throw new WorkflowError("Milestone label is required");
+  c.milestones.push({ key: nextId("MS"), label: label.trim(), status: "Pending", custom: true });
+  store.logActivity(c, "SO", "Custom milestone added", label);
+  return c;
+}
+
 export async function updateMilestone(
   caseId: string,
-  key: MilestoneKey,
+  key: string,
   status: MilestoneStatus,
   notes?: string,
   departments?: string[],
@@ -488,24 +546,69 @@ export function syncCustomerMaster(caseId: string): DealerCase {
   return c;
 }
 
-// Step 9 — Budget approval / IRR / cost estimate (AI-generated note).
-export async function generateBudget(caseId: string, costEstimate: number, irr: number): Promise<DealerCase> {
+// Step 9 — Budget approval: same real cost-estimate + IRR engine used for modernisation requests
+// (services/modernisation.ts), combining every rate-card category since a new site needs Civil
+// Works, Driveway, DU, Tank and Electric Panel components together. The SO adjusts qty/rates to
+// the actual site plan and supplies the volume envisaged for the new outlet; IRR is auto-computed
+// from that, never entered as a raw number.
+function budgetOrDefault(c: DealerCase): BudgetApproval {
+  return c.budget ?? { costEstimate: buildDefaultNroCostEstimate(), status: "Draft" };
+}
+
+export function getBudgetCostEstimate(caseId: string): CostEstimate {
+  const c = getCase(caseId);
+  return budgetOrDefault(c).costEstimate;
+}
+
+export function updateBudgetCostEstimateLineItems(caseId: string, lineItems: { id: string; qty: number; rate: number }[]): DealerCase {
   const c = getCase(caseId);
   if (!c.customerMaster) throw new WorkflowError("Customer master must be synced before budget approval");
+  const budget = budgetOrDefault(c);
+  for (const update of lineItems) {
+    const li = budget.costEstimate.lineItems.find((l) => l.id === update.id);
+    if (li) {
+      li.qty = update.qty;
+      li.rate = update.rate;
+    }
+  }
+  budget.costEstimate = recomputeCostEstimate(budget.costEstimate);
+  if (budget.irr) budget.irr = computeIrr(budget.costEstimate, budget.irr.assumptions);
+  c.budget = budget;
+  c.stage = "BudgetApproval";
+  store.logActivity(c, "SO", "NRO cost estimate updated");
+  return c;
+}
+
+export function updateBudgetIrrAssumptions(caseId: string, assumptions: Partial<IrrAssumptions>): DealerCase {
+  const c = getCase(caseId);
+  if (!c.customerMaster) throw new WorkflowError("Customer master must be synced before budget approval");
+  const budget = budgetOrDefault(c);
+  const merged: IrrAssumptions = { ...(budget.irr?.assumptions ?? defaultIrrAssumptions()), ...assumptions };
+  budget.irr = computeIrr(budget.costEstimate, merged);
+  c.budget = budget;
+  c.stage = "BudgetApproval";
+  store.logActivity(c, "SO", "NRO IRR computed", `Volume envisaged ${merged.incrementalVolumeKLPerMonth} KL/month`);
+  return c;
+}
+
+export async function submitBudgetForApproval(caseId: string): Promise<DealerCase> {
+  const c = getCase(caseId);
+  if (!c.budget) throw new WorkflowError("Build the cost estimate before submitting for approval");
+  if (!c.budget.irr) throw new WorkflowError("Compute the IRR (volume envisaged) before submitting for approval");
   const noteText = await getAiEngine().generate("budgetNote", {
-    costEstimate,
-    irr,
+    costEstimate: c.budget.costEstimate.totalInvestment,
+    irr: c.budget.irr.irrPct ?? 0,
     context: `New outlet development — ${c.stretchName}, ${c.salesArea}`,
   });
-  c.budget = { costEstimate, irr, noteText, status: "Submitted" };
-  c.stage = "BudgetApproval";
-  store.logActivity(c, "AI", "Budget approval note generated", `Cost ${costEstimate}, IRR ${irr}%`);
+  c.budget.noteText = noteText;
+  c.budget.status = "Submitted";
+  store.logActivity(c, "AI", "Budget approval note generated", `Cost ${c.budget.costEstimate.totalInvestment}, IRR ${c.budget.irr.irrPct}%`);
   return c;
 }
 
 export function decideBudget(caseId: string, approve: boolean): DealerCase {
   const c = getCase(caseId);
-  if (!c.budget) throw new WorkflowError("Budget note has not been generated yet");
+  if (!c.budget || c.budget.status !== "Submitted") throw new WorkflowError("Budget note has not been submitted for approval yet");
   c.budget.status = approve ? "Approved" : "Rejected";
   c.budget.approvedAt = new Date().toISOString();
   if (approve) {

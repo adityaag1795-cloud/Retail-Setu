@@ -811,6 +811,7 @@ async function renderCaseDetail(id) {
     const c = await api.get(`/cases/${id}`);
     const feasibilityForm = await api.get(`/cases/${id}/feasibility-form`);
     const fileNoteForm = await api.get(`/cases/${id}/file-note-form`);
+    const budgetCostEstimate = c.customerMaster ? await api.get(`/cases/${id}/budget-cost-estimate`) : null;
     const sections = [];
     sections.push(`<a href="#/cases">&larr; All cases</a><h2>${escapeHtml(c.stretchName)}</h2>${stageBanner(c.stage)}`);
     sections.push(`<p>${escapeHtml(c.salesArea)} · KML: ${escapeHtml(c.kmlFileName ?? "-")}${c.caseType === "Resitement" ? " · <strong>Resitement case</strong>" : ""}</p><p>${escapeHtml(c.competitorContext)}</p>`);
@@ -835,6 +836,23 @@ async function renderCaseDetail(id) {
             : `<button id="gen-tech-eval" class="btn" ${r.technicalEvaluationCommittee.length ? "" : "disabled"}>Generate technical evaluation report (AI)</button>`}
     `);
     }
+    // Interested applicants — people who've come forward for this stretch before (or instead of)
+    // a formal Application Form intake.
+    sections.push(`
+    <h3>Interested applicants</h3>
+    <table class="table"><thead><tr><th>Name</th><th>Stretch</th><th>Land details</th><th>Category</th><th>Mobile No.</th><th>Added</th></tr></thead>
+    <tbody>${c.interestedApplicants
+        .map((ia) => `<tr><td>${escapeHtml(ia.name)}</td><td>${escapeHtml(ia.stretchName)}</td><td>${escapeHtml(ia.landDetails)}</td><td>${escapeHtml(ia.category)}</td><td>${escapeHtml(ia.mobileNo)}</td><td>${ia.addedAt.slice(0, 10)}</td></tr>`)
+        .join("") || "<tr><td colspan='6'>No interested applicants recorded yet.</td></tr>"}</tbody></table>
+    <form id="interested-applicant-form" class="form form--inline">
+      <input name="name" placeholder="Applicant name" required />
+      <input name="stretchName" placeholder="Stretch" value="${escapeHtml(c.stretchName)}" />
+      <input name="landDetails" placeholder="Land details" />
+      <input name="category" placeholder="Category (e.g. OPEN/SC/ST/OBC)" />
+      <input name="mobileNo" placeholder="Mobile No." />
+      <button type="submit" class="btn btn--sm">Add interested applicant</button>
+    </form>
+  `);
     // Roster
     sections.push(`
     <h3>Roster of feasible outlets</h3>
@@ -970,6 +988,10 @@ async function renderCaseDetail(id) {
           </tr>`)
             .join("")}</tbody>
       </table>
+      <form id="add-milestone-form" class="form form--inline">
+        <input name="label" placeholder="Custom milestone (e.g. Fire NOC, Pollution NOC)" required />
+        <button type="submit" class="btn btn--sm">Add milestone</button>
+      </form>
     `);
     }
     // Lease Agreement & Dealership Agreement — auto-generated on NOC receipt.
@@ -993,24 +1015,11 @@ async function renderCaseDetail(id) {
             : `<button id="sync-customer" class="btn">Sync to MDM &amp; SAP (requires NOC = Done)</button>`}
     `);
     }
-    // Budget
+    // Budget — real cost-estimate + IRR engine (same as modernisation requests), combining every
+    // rate-card category since a new site needs Civil Works, Driveway, DU, Tank and Electric Panel
+    // together. Volume envisaged is collected from the SO; cost estimate and IRR are auto-computed.
     if (c.customerMaster) {
-        sections.push(`
-      <h3>Budget approval / IRR / cost estimate</h3>
-      ${c.budget
-            ? `<pre class="ai-output">${escapeHtml(c.budget.noteText)}</pre><p>Status: <strong>${escapeHtml(c.budget.status)}</strong></p>
-          ${c.budget.status === "Submitted"
-                ? `<form id="budget-decision" class="form form--inline">
-              <button type="submit" name="approve" value="1" class="btn">Approve</button>
-              <button type="submit" name="approve" value="0" class="btn btn--danger">Reject</button>
-            </form>`
-                : ""}`
-            : `<form id="budget-form" class="form form--inline">
-          <input name="costEstimate" type="number" placeholder="Cost estimate (Rs.)" required />
-          <input name="irr" type="number" step="0.1" placeholder="IRR %" required />
-          <button type="submit" class="btn">Generate budget note (AI)</button>
-        </form>`}
-    `);
+        sections.push(renderNroBudgetSection(c, budgetCostEstimate));
     }
     // Project execution / Gantt
     if (c.project) {
@@ -1034,6 +1043,75 @@ async function renderCaseDetail(id) {
   `);
     app().innerHTML = `<section class="panel">${sections.join("")}</section>`;
     wireCaseHandlers(c);
+}
+/**
+ * Budget approval for a New Retail Outlet — same real cost-estimate + IRR engine as the
+ * modernisation-request flow (services/modernisation.ts), combining every rate-card category
+ * (Civil Works, Driveway, DU, Tank, Electric Panel) since a new site build needs all of them.
+ * The SO adjusts qty/rate to the actual site plan and supplies the volume envisaged; IRR is
+ * auto-computed from that, never entered as a raw number.
+ */
+function renderNroBudgetSection(c, defaultCostEstimate) {
+    const budget = c.budget ?? { costEstimate: defaultCostEstimate, irr: null, status: "Draft" };
+    const ce = budget.costEstimate ?? defaultCostEstimate;
+    const irr = budget.irr;
+    const sections = [`<h3>Budget approval / IRR / cost estimate <span class="muted">(New Retail Outlet — real HPCL standard rates)</span></h3>`];
+    sections.push(`
+    <form id="budget-cost-form" class="form">
+      <table class="table">
+        <thead><tr><th>Description</th><th>Bucket</th><th>Qty</th><th>UOM</th><th>Rate (Rs.)</th><th>Amount (Rs.)</th></tr></thead>
+        <tbody>
+          ${ce.lineItems
+        .map((li) => `<tr>
+            <td>${escapeHtml(li.description)}</td>
+            <td>${li.depreciationBucket === "Civil" ? "Civil (10%)" : "Plant & Machinery (15%)"}</td>
+            <td><input name="qty_${li.id}" type="number" step="0.01" value="${li.qty}" style="width:6rem" /></td>
+            <td>${escapeHtml(li.uom)}</td>
+            <td><input name="rate_${li.id}" type="number" step="0.01" value="${li.rate}" style="width:8rem" /></td>
+            <td>Rs. ${li.amount.toLocaleString("en-IN")}</td>
+          </tr>`)
+        .join("")}
+        </tbody>
+      </table>
+      <p>
+        Subtotal: <strong>Rs. ${ce.subtotal.toLocaleString("en-IN")}</strong>
+        (Civil Rs. ${ce.civilAmount.toLocaleString("en-IN")} + Plant &amp; Machinery Rs. ${ce.plantMachineryAmount.toLocaleString("en-IN")})
+        &nbsp;|&nbsp; GST addback (${ce.gstRatePct}% &times; ${ce.gstNonCreditablePct}% non-creditable): <strong>Rs. ${ce.gstAddback.toLocaleString("en-IN")}</strong>
+        &nbsp;|&nbsp; Total Investment: <strong>Rs. ${ce.totalInvestment.toLocaleString("en-IN")}</strong>
+      </p>
+      <button type="submit" class="btn btn--sm">Recompute cost estimate</button>
+    </form>
+
+    <h4>IRR <span class="muted">(WDV depreciation, real HQO circular rates — Gross Margin Rs 975/KL, Op. Cost Rs 246/KL, 15% minimum)</span></h4>
+    <form id="budget-irr-form" class="form">
+      <label>Volume envisaged (KL/month) <input name="incrementalVolumeKLPerMonth" type="number" step="0.1" value="${irr?.assumptions.incrementalVolumeKLPerMonth ?? 0}" required /></label>
+      <label>Horizon (years) <input name="horizonYears" type="number" value="${irr?.assumptions.horizonYears ?? 10}" required /></label>
+      <label>Gross margin (Rs/KL) <input name="grossMarginRsPerKL" type="number" value="${irr?.assumptions.grossMarginRsPerKL ?? 975}" required /></label>
+      <label>Operating cost (Rs/KL) <input name="operatingCostRsPerKL" type="number" value="${irr?.assumptions.operatingCostRsPerKL ?? 246}" required /></label>
+      <button type="submit" class="btn btn--sm">Compute / recompute IRR</button>
+    </form>
+    ${irr
+        ? `<p>
+      IRR: <strong>${irr.irrPct === null ? "not viable within horizon" : `${irr.irrPct.toFixed(1)}%`}</strong>
+      vs minimum hurdle <strong>${irr.minimumHurdlePct}%</strong>
+      <span class="badge badge--${irr.meetsHurdle ? "resolved" : "escalated"}">${irr.meetsHurdle ? "Meets hurdle" : "Below hurdle"}</span>
+    </p>`
+        : `<p class="muted">IRR not yet computed.</p>`}
+  `);
+    if (budget.status === "Draft") {
+        sections.push(`<button id="budget-submit-btn" class="btn" ${irr ? "" : "disabled"}>Submit budget note for approval (AI)</button>`);
+    }
+    else {
+        sections.push(`<pre class="ai-output">${escapeHtml(budget.noteText ?? "")}</pre><p>Status: <strong>${escapeHtml(budget.status)}</strong></p>`);
+        if (budget.status === "Submitted") {
+            sections.push(`
+        <form id="budget-decision" class="form form--inline">
+          <button type="submit" name="approve" value="1" class="btn">Approve</button>
+          <button type="submit" name="approve" value="0" class="btn btn--danger">Reject</button>
+        </form>`);
+        }
+    }
+    return sections.join("");
 }
 const MODERNISATION_TYPE_LABELS = {
     Canopy: "Canopy",
@@ -1293,10 +1371,23 @@ function yesNoSelect(name) {
 function ascAnswerSelect(name) {
     return `<select name="${name}"><option value="">—</option><option value="Yes">Yes</option><option value="No">No</option><option value="N.A.">N.A.</option></select>`;
 }
+/** Upload input + "attached" status for a scanned/offline ASC/LEC/FVC report — kept for the record, no auto-fill (see recordInspectionUpload's doc comment). */
+function renderInspectionUploadBlock(c, kind) {
+    const upload = c.inspectionUploads?.[kind];
+    return `
+    <div class="inspection-upload">
+      <label>Attach a scanned/offline ${kind.toUpperCase()} report (optional, for the record — reads real text out of PDF/DOCX/TXT/MD; a scanned image PDF has no text layer to read)
+        <input class="inspection-upload-input" data-kind="${kind}" type="file" accept=".txt,.md,.pdf,.docx" />
+      </label>
+      ${upload
+        ? `<p class="muted">Attached: <strong>${escapeHtml(upload.fileName)}</strong> — ${upload.uploadedAt.slice(0, 19).replace("T", " ")}</p>`
+        : ""}
+    </div>`;
+}
 function renderAscBlock(c) {
     const existing = c.inspections.asc;
     if (existing) {
-        return `<div class="inspection"><h4>ASC — Application Scrutiny Committee</h4><pre class="ai-output">${escapeHtml(existing.reportText)}</pre></div>`;
+        return `<div class="inspection"><h4>ASC — Application Scrutiny Committee</h4><pre class="ai-output">${escapeHtml(existing.reportText)}</pre><p><a class="btn btn--sm" href="/api/cases/${c.id}/asc.pdf" target="_blank">⬇ Download ASC report PDF</a></p>${renderInspectionUploadBlock(c, "asc")}</div>`;
     }
     if (!c.application) {
         return `<div class="inspection"><h4>ASC — Application Scrutiny Committee</h4><p class="muted">Save the Application intake above first — ASC auto-populates from it.</p></div>`;
@@ -1304,6 +1395,7 @@ function renderAscBlock(c) {
     return `
     <div class="inspection">
       <h4>ASC — Application Scrutiny Committee <span class="muted">(Annexure V)</span></h4>
+      ${renderInspectionUploadBlock(c, "asc")}
       <p class="muted">Application No. ${escapeHtml(c.application.applicationNo)} · ${escapeHtml(c.application.applicantName)} · Category ${escapeHtml(c.application.applicantCategory)} — auto-populated from the Application above.</p>
       <form id="asc-form" class="form">
         <label>Name of Regional Office <input name="regionalOfficeName" placeholder="e.g. GURGAON RETAIL REGIONAL OFFICE" /></label>
@@ -1334,7 +1426,7 @@ function renderAscBlock(c) {
 function renderLecBlock(c) {
     const existing = c.inspections.lec;
     if (existing) {
-        return `<div class="inspection"><h4>LEC — Land Evaluation Committee</h4><pre class="ai-output">${escapeHtml(existing.reportText)}</pre></div>`;
+        return `<div class="inspection"><h4>LEC — Land Evaluation Committee</h4><pre class="ai-output">${escapeHtml(existing.reportText)}</pre><p><a class="btn btn--sm" href="/api/cases/${c.id}/lec.pdf" target="_blank">⬇ Download LEC report PDF</a></p>${renderInspectionUploadBlock(c, "lec")}</div>`;
     }
     if (!c.application) {
         return `<div class="inspection"><h4>LEC — Land Evaluation Committee</h4><p class="muted">Save the Application intake above first — LEC auto-populates from it.</p></div>`;
@@ -1343,6 +1435,7 @@ function renderLecBlock(c) {
     return `
     <div class="inspection">
       <h4>LEC — Land Evaluation Committee <span class="muted">(Annexure W1)</span></h4>
+      ${renderInspectionUploadBlock(c, "lec")}
       <p class="muted">Plot ${escapeHtml(a.landKhasraKhatouniNo)}, Village ${escapeHtml(a.revenueVillage)}, Tehsil ${escapeHtml(a.tehsil)} · Frontage ${a.frontageM}m &times; Depth ${a.depthM}m, Area ${a.areaSqM} sqm — auto-populated from the Application above.</p>
       <form id="lec-form" class="form">
         <label>Distance from prominent landmark (m) <input name="distanceFromLandmarkM" /></label>
@@ -1367,7 +1460,7 @@ function renderLecBlock(c) {
 function renderFvcBlock(c) {
     const existing = c.inspections.fvc;
     if (existing) {
-        return `<div class="inspection"><h4>FVC — Field Verification of Credentials</h4><pre class="ai-output">${escapeHtml(existing.reportText)}</pre></div>`;
+        return `<div class="inspection"><h4>FVC — Field Verification of Credentials</h4><pre class="ai-output">${escapeHtml(existing.reportText)}</pre><p><a class="btn btn--sm" href="/api/cases/${c.id}/fvc.pdf" target="_blank">⬇ Download FVC report PDF</a></p>${renderInspectionUploadBlock(c, "fvc")}</div>`;
     }
     if (!c.application) {
         return `<div class="inspection"><h4>FVC — Field Verification of Credentials</h4><p class="muted">Save the Application intake above first — FVC auto-populates from it.</p></div>`;
@@ -1375,6 +1468,7 @@ function renderFvcBlock(c) {
     return `
     <div class="inspection">
       <h4>FVC — Field Verification of Credentials <span class="muted">(Annexure Y)</span></h4>
+      ${renderInspectionUploadBlock(c, "fvc")}
       <p class="muted">${escapeHtml(c.application.applicantName)}, ${escapeHtml(c.application.address)} — auto-populated from the Application above.</p>
       <form id="fvc-form" class="form">
         <table class="table"><thead><tr><th>#</th><th>Particulars to be verified</th><th>Documents to be verified</th><th>Provided?</th><th>Verified</th><th>Comments</th></tr></thead>
@@ -1477,6 +1571,19 @@ function wireCaseHandlers(c) {
         toast("Technical evaluation report generated");
         await renderCaseDetail(c.id);
     }));
+    on("#interested-applicant-form", (el) => el.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const data = formToObject(e.target);
+        await api.post(`/cases/${c.id}/interested-applicants`, {
+            name: data["name"],
+            stretchName: data["stretchName"] ?? "",
+            landDetails: data["landDetails"] ?? "",
+            category: data["category"] ?? "",
+            mobileNo: data["mobileNo"] ?? "",
+        });
+        toast("Interested applicant added");
+        await renderCaseDetail(c.id);
+    }));
     on("#roster-form", (el) => el.addEventListener("submit", async (e) => {
         e.preventDefault();
         const data = formToObject(e.target);
@@ -1551,6 +1658,18 @@ function wireCaseHandlers(c) {
         toast("Application saved");
         await renderCaseDetail(c.id);
     }));
+    qsa(".inspection-upload-input").forEach((el) => el.addEventListener("change", async (e) => {
+        const input = e.target;
+        const file = input.files?.[0];
+        if (!file)
+            return;
+        const kind = input.dataset["kind"];
+        const isBinary = /\.(pdf|docx)$/i.test(file.name);
+        const body = isBinary ? { base64: await fileToBase64(file), fileName: file.name } : { text: await file.text(), fileName: file.name };
+        await api.post(`/cases/${c.id}/inspections/${kind}/upload`, body);
+        toast(`${kind?.toUpperCase()} report attached`);
+        await renderCaseDetail(c.id);
+    }));
     on("#application-upload", (el) => el.addEventListener("change", async (e) => {
         const input = e.target;
         const file = input.files?.[0];
@@ -1623,6 +1742,13 @@ function wireCaseHandlers(c) {
         toast("Milestone updated");
         await renderCaseDetail(c.id);
     }));
+    on("#add-milestone-form", (el) => el.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const data = formToObject(e.target);
+        await api.post(`/cases/${c.id}/milestones`, { label: data["label"] });
+        toast("Milestone added");
+        await renderCaseDetail(c.id);
+    }));
     on("#sync-customer", (el) => el.addEventListener("click", async () => {
         try {
             await api.post(`/cases/${c.id}/customer-master-sync`);
@@ -1633,10 +1759,34 @@ function wireCaseHandlers(c) {
             toast(err.message, "error");
         }
     }));
-    on("#budget-form", (el) => el.addEventListener("submit", async (e) => {
+    on("#budget-cost-form", (el) => el.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const lineItems = [];
+        for (const input of Array.from(form.querySelectorAll('input[name^="qty_"]'))) {
+            const name = input.name;
+            const id = name.slice(4);
+            const rateInput = form.elements.namedItem(`rate_${id}`);
+            lineItems.push({ id, qty: Number(input.value), rate: rateInput ? Number(rateInput.value) : 0 });
+        }
+        await api.post(`/cases/${c.id}/budget/cost-estimate`, { lineItems });
+        toast("Cost estimate recomputed");
+        await renderCaseDetail(c.id);
+    }));
+    on("#budget-irr-form", (el) => el.addEventListener("submit", async (e) => {
         e.preventDefault();
         const data = formToObject(e.target);
-        await api.post(`/cases/${c.id}/budget`, { costEstimate: Number(data["costEstimate"]), irr: Number(data["irr"]) });
+        await api.post(`/cases/${c.id}/budget/irr`, {
+            incrementalVolumeKLPerMonth: Number(data.incrementalVolumeKLPerMonth),
+            horizonYears: Number(data.horizonYears),
+            grossMarginRsPerKL: Number(data.grossMarginRsPerKL),
+            operatingCostRsPerKL: Number(data.operatingCostRsPerKL),
+        });
+        toast("IRR recomputed");
+        await renderCaseDetail(c.id);
+    }));
+    on("#budget-submit-btn", (el) => el.addEventListener("click", async () => {
+        await api.post(`/cases/${c.id}/budget/submit`);
         toast("Budget note generated");
         await renderCaseDetail(c.id);
     }));

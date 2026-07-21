@@ -824,9 +824,67 @@ function renderFeasibilityFormSection(c: any, f: any): string {
   `;
 }
 
+function activityRowsToLines(rows: any[]): string {
+  return rows.map((a) => `${a.activity} | ${a.date} | ${a.team} | ${a.result} | ${a.attachment}`).join("\n");
+}
+
+function renderFileNoteFormSection(c: any, f: any): string {
+  return `
+    <h3>File Note for LOI <span class="muted">(real HPCL file-note format — advertisement, selection history, ASC/LEC/FVC, approval ask)</span></h3>
+    <form id="file-note-form" class="form">
+      <label>Name of Regional Office <input name="regionalOfficeName" value="${escapeHtml(f.regionalOfficeName)}" /></label>
+      <label>Advertised Location Description <input name="advertisedLocationDescription" value="${escapeHtml(f.advertisedLocationDescription)}" required /></label>
+      <label>Location Serial No <input name="locationSerialNo" value="${escapeHtml(f.locationSerialNo)}" /></label>
+      <label>Advertisement Date <input name="advertisementDate" type="date" value="${escapeHtml(f.advertisementDate)}" /></label>
+      <label>Newspapers <input name="newspapers" value="${escapeHtml(f.newspapers)}" placeholder="e.g. Dainik Bhaskar/The Times of India" /></label>
+      <label>Last Date to Apply <input name="lastDateToApply" type="date" value="${escapeHtml(f.lastDateToApply)}" /></label>
+
+      <label>Category <input name="category" value="${escapeHtml(f.category)}" /></label>
+      <label>Type of RO <input name="typeOfRO" value="${escapeHtml(f.typeOfRO)}" /></label>
+      <label>Class of Market <input name="classOfMarket" value="${escapeHtml(f.classOfMarket)}" /></label>
+      <label>Type of Sites <input name="typeOfSite" value="${escapeHtml(f.typeOfSite)}" placeholder="e.g. CFS" /></label>
+      <label>Plot Size (m) <input name="plotSizeM" value="${escapeHtml(f.plotSizeM)}" placeholder="e.g. 20 X 20" /></label>
+      <label>District <input name="district" value="${escapeHtml(f.district)}" /></label>
+      <label>Mode of Selection <input name="modeOfSelection" value="${escapeHtml(f.modeOfSelection)}" placeholder="e.g. Draw of lots" /></label>
+      <label>No. of Response <input name="noOfResponse" value="${escapeHtml(f.noOfResponse)}" placeholder="e.g. 7 (Gr.1: 0, Gr.2: 2, Gr. 3: 5)" /></label>
+
+      <label>Selection Narrative <span class="muted">(the case's own applications/draw-of-lots/rejection/selection story, one or more paragraphs)</span>
+        <textarea name="selectionNarrative" rows="6">${escapeHtml(f.selectionNarrative)}</textarea>
+      </label>
+
+      <label>ASC Committee Size <input name="ascCommitteeSize" type="number" value="${f.ascCommitteeSize}" /></label>
+      <label>ASC Date <input name="ascDate" type="date" value="${escapeHtml(f.ascDate)}" /></label>
+      <label>ASC Annexure Ref <input name="ascAnnexureRef" value="${escapeHtml(f.ascAnnexureRef)}" placeholder="e.g. 6" /></label>
+
+      <label>Activity Table <span class="muted">(one per line: Activity | Date | Team | Result/Observations | Attachment)</span>
+        <textarea name="activityLines" rows="9">${escapeHtml(activityRowsToLines(f.activities))}</textarea>
+      </label>
+
+      <label>Selected Applicant Name <input name="selectedApplicantName" value="${escapeHtml(f.selectedApplicantName)}" required /></label>
+      <label>Advocate Report Date <input name="advocateReportDate" type="date" value="${escapeHtml(f.advocateReportDate)}" /></label>
+      <label>Land Parcel Description <span class="muted">(Khata/Mustil/Killa/Khewat/Khatoni no.)</span>
+        <textarea name="landParcelDescription">${escapeHtml(f.landParcelDescription)}</textarea>
+      </label>
+      <label>Jamabandi Year <input name="jamabandiYear" value="${escapeHtml(f.jamabandiYear)}" /></label>
+      <label>Village <input name="village" value="${escapeHtml(f.village)}" /></label>
+      <label>Tehsil <input name="tehsil" value="${escapeHtml(f.tehsil)}" /></label>
+      <label>Verified Area (sq m) <input name="verifiedAreaSqM" value="${escapeHtml(f.verifiedAreaSqM)}" /></label>
+      <label>FVC Date <input name="fvcDate" type="date" value="${escapeHtml(f.fvcDate)}" /></label>
+      <label>Land Documents Annexure Ref <input name="landDocumentsAnnexureRef" value="${escapeHtml(f.landDocumentsAnnexureRef)}" placeholder="e.g. 15" /></label>
+      <label>Dealer Portal Annexure Ref <input name="dealerPortalAnnexureRef" value="${escapeHtml(f.dealerPortalAnnexureRef)}" placeholder="e.g. 17" /></label>
+
+      <label>List of Annexures <span class="muted">(one per line)</span>
+        <textarea name="annexureListLines" rows="6">${escapeHtml((f.annexureList ?? []).join("\n"))}</textarea>
+      </label>
+
+      <button type="submit" class="btn">Save &amp; generate file note</button>
+    </form>`;
+}
+
 async function renderCaseDetail(id: string) {
   const c = await api.get(`/cases/${id}`);
   const feasibilityForm = await api.get(`/cases/${id}/feasibility-form`);
+  const fileNoteForm = await api.get(`/cases/${id}/file-note-form`);
   const sections: string[] = [];
 
   sections.push(`<a href="#/cases">&larr; All cases</a><h2>${escapeHtml(c.stretchName)}</h2>${stageBanner(c.stage)}`);
@@ -936,9 +994,11 @@ async function renderCaseDetail(id: string) {
   sections.push(renderLecBlock(c));
   sections.push(renderFvcBlock(c));
 
-  // File note — real HPCL "Approved File Note" routing-chain format.
+  // File note for LOI — real HPCL "Approved File Note" routing-chain format, matched to a
+  // real sample file note (advertisement/location details, selection narrative, ASC confirmation,
+  // activity table, land/site/FVC verification, approval ask, annexure list).
+  sections.push(renderFileNoteFormSection(c, fileNoteForm));
   sections.push(`
-    <h3>File note <span class="muted">(AI-drafted Initiation stage, cites Knowledge Centre clauses)</span></h3>
     ${
       c.fileNote
         ? `
@@ -949,16 +1009,16 @@ async function renderCaseDetail(id: string) {
           (r: any) => `
         <div class="routing-stage">
           <p class="muted">${escapeHtml(r.role)} — ${escapeHtml(r.actorName)}, ${escapeHtml(r.actorTitle)} · ${r.timestamp.slice(0, 19).replace("T", " ")}</p>
-          <p>${escapeHtml(r.remarks)}</p>
+          <pre class="ai-output">${escapeHtml(r.remarks)}</pre>
         </div>`,
         )
         .join("")}
       <p>Status: <strong>${escapeHtml(c.fileNote.status)}</strong></p>
       ${c.fileNote.policyClausesCited.length ? `<p class="muted">Clauses cited: ${c.fileNote.policyClausesCited.map(escapeHtml).join("; ")}</p>` : ""}
+      <p><a class="btn btn--sm" href="/api/cases/${c.id}/file-note.pdf" target="_blank">⬇ Download file note PDF</a></p>
       `
         : "<p class='muted'>Not generated yet.</p>"
     }
-    <button id="gen-filenote" class="btn">Generate file note (AI)</button>
     ${
       c.fileNote && c.fileNote.status === "Draft"
         ? `<form id="filenote-decision" class="form">
@@ -1689,9 +1749,27 @@ function wireCaseHandlers(c: any) {
     }),
   );
 
-  on("#gen-filenote", (el) =>
-    el.addEventListener("click", async () => {
-      await api.post(`/cases/${c.id}/file-note`);
+  on("#file-note-form", (el) =>
+    el.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const data = formToObject(e.target as HTMLFormElement) as any;
+      const activities = (data.activityLines ?? "")
+        .split("\n")
+        .map((l: string) => l.trim())
+        .filter(Boolean)
+        .map((l: string) => {
+          const [activity, date, team, result, attachment] = l.split("|").map((s) => s.trim());
+          return { activity: activity ?? "", date: date ?? "", team: team ?? "", result: result ?? "", attachment: attachment ?? "" };
+        });
+      const annexureList = (data.annexureListLines ?? "")
+        .split("\n")
+        .map((l: string) => l.trim())
+        .filter(Boolean);
+      const body: Record<string, unknown> = { ...data, activities, annexureList };
+      delete body["activityLines"];
+      delete body["annexureListLines"];
+      body["ascCommitteeSize"] = Number(data.ascCommitteeSize) || 0;
+      await api.post(`/cases/${c.id}/file-note-form`, body);
       toast("File note generated");
       await renderCaseDetail(c.id);
     }),

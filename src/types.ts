@@ -393,6 +393,60 @@ export interface LetterOfIntent {
   issuedAt: string;
 }
 
+/** One row of the real LOI file note's activity table (HPCL Advocate Opinion / LEC / FVC / document checks). */
+export interface LoiActivityRow {
+  activity: string;
+  date: string;
+  team: string;
+  result: string;
+  attachment: string; // e.g. "Annexure-7"
+}
+
+/**
+ * Structured input for the real "File Note for LOI" — matches a real sample file note
+ * (advertisement + location details, the case's own selection narrative, ASC confirmation,
+ * an activity table, land/site/FVC verification paragraphs, and an approval ask), rendered
+ * verbatim to that format by services/loiFileNote.ts rather than summarised by an AI engine.
+ */
+export interface LoiFileNoteForm {
+  regionalOfficeName: string;
+  advertisedLocationDescription: string;
+  locationSerialNo: string;
+  advertisementDate: string;
+  newspapers: string;
+  lastDateToApply: string;
+
+  category: string;
+  typeOfRO: string;
+  classOfMarket: string;
+  typeOfSite: string;
+  plotSizeM: string;
+  district: string;
+  modeOfSelection: string;
+  noOfResponse: string;
+
+  selectionNarrative: string;
+
+  ascCommitteeSize: number;
+  ascDate: string;
+  ascAnnexureRef: string;
+
+  activities: LoiActivityRow[];
+
+  selectedApplicantName: string;
+  advocateReportDate: string;
+  landParcelDescription: string;
+  jamabandiYear: string;
+  village: string;
+  tehsil: string;
+  verifiedAreaSqM: string;
+  fvcDate: string;
+  landDocumentsAnnexureRef: string;
+  dealerPortalAnnexureRef: string;
+
+  annexureList: string[];
+}
+
 export type MilestoneKey =
   | "MapSubmission"
   | "DrawingAndDMLetter"
@@ -684,6 +738,7 @@ export interface DealerCase {
     lec?: LecResult;
     fvc?: FvcResult;
   };
+  loiFileNoteForm?: LoiFileNoteForm;
   fileNote?: FileNote;
   loi?: LetterOfIntent;
   milestones: Milestone[];

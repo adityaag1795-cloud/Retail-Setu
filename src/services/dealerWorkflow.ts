@@ -14,6 +14,7 @@ import type {
   GanttTask,
   Outlet,
   FeasibilityReportForm,
+  LoiFileNoteForm,
 } from "../types.js";
 import { store, nextId, freshMilestones } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
@@ -21,6 +22,7 @@ import { matchClauses } from "./policyBot.js";
 import { ASC_CHECKLIST_TEMPLATE, LEC_EVALUATION_TEMPLATE, FVC_ITEMS_TEMPLATE, formatAscReport, formatLecReport, formatFvcReport } from "./dsgForms.js";
 import { extractApplicationFormFields, extractRawTextFromUpload, type ExtractionResult } from "./formExtraction.js";
 import { defaultFeasibilityReportForm, renderFeasibilityReportText } from "./feasibilityReport.js";
+import { defaultLoiFileNoteForm, renderLoiFileNoteText } from "./loiFileNote.js";
 
 export class WorkflowError extends Error {}
 
@@ -325,23 +327,20 @@ export function submitFvc(
   return c;
 }
 
-// Step 5 — AI-generated file note, modelled on HPCL's real "Approved File Note" SAP workflow:
-// a routing chain (Initiation -> Recommendation/Approval) where each stage appends its own
-// timestamped remarks rather than one flat note body.
-export async function generateFileNote(caseId: string): Promise<DealerCase> {
+// Step 5 — File note for LOI, matching a real sample file note exactly (see loiFileNote.ts):
+// advertisement + location details, the case's own selection narrative, ASC confirmation, an
+// activity table, land/site/FVC verification, and an approval ask. Routing chain (Initiation ->
+// Approval) unchanged from the real HPCL "Approved File Note" SAP workflow.
+export function getLoiFileNoteForm(caseId: string): LoiFileNoteForm {
   const c = getCase(caseId);
+  return c.loiFileNoteForm ?? defaultLoiFileNoteForm(c);
+}
+
+export function saveLoiFileNoteForm(caseId: string, form: LoiFileNoteForm): DealerCase {
+  const c = getCase(caseId);
+  c.loiFileNoteForm = form;
   const policyClauses = matchClauses(`${c.stretchName} dealer selection land eligibility financial ASC resitement budget`, 5);
-  const initiationRemarks = await getAiEngine().generate("fileNote", {
-    stretchName: c.stretchName,
-    application: c.application ?? undefined,
-    inspections: c.inspections,
-    policyClauses,
-    salesArea: c.salesArea,
-    caseType: c.caseType,
-    competitorContext: c.competitorContext,
-    roster: c.roster,
-    feasible: c.feasibilityReport?.feasible ?? false,
-  });
+  const remarks = renderLoiFileNoteText(form);
   const so = [...store.team.values()].find((t) => t.role === "SO");
   c.fileNote = {
     systemId: nextId("SYS"),
@@ -353,7 +352,7 @@ export async function generateFileNote(caseId: string): Promise<DealerCase> {
         role: "Initiation",
         actorName: so?.name ?? "Sales Officer",
         actorTitle: "Sales Officer",
-        remarks: initiationRemarks,
+        remarks,
         timestamp: new Date().toISOString(),
       },
     ],
@@ -362,7 +361,7 @@ export async function generateFileNote(caseId: string): Promise<DealerCase> {
     generatedAt: new Date().toISOString(),
   };
   c.stage = "FileNoteApproval";
-  store.logActivity(c, "AI", "File note initiated", `${policyClauses.length} clause(s) cited`);
+  store.logActivity(c, "SO", "File note for LOI generated");
   return c;
 }
 

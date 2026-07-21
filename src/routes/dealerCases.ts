@@ -190,8 +190,32 @@ export function registerDealerCaseRoutes(router: Router) {
     );
   });
 
-  router.post("/api/cases/:id/file-note", async (_req, res, params) => {
-    sendJson(res, 200, await wrap(() => wf.generateFileNote(params["id"]!)));
+  router.get("/api/cases/:id/file-note-form", async (_req, res, params) => {
+    sendJson(res, 200, await wrap(() => wf.getLoiFileNoteForm(params["id"]!)));
+  });
+
+  router.post("/api/cases/:id/file-note-form", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof wf.saveLoiFileNoteForm>[1]>(req);
+    sendJson(res, 200, await wrap(() => wf.saveLoiFileNoteForm(params["id"]!, body)));
+  });
+
+  router.get("/api/cases/:id/file-note.pdf", async (_req, res, params) => {
+    const c = await wrap(() => wf.getCaseById(params["id"]!));
+    if (!c.fileNote) throw new ApiError(404, "File note not generated yet");
+    const lines = [
+      `System ID: ${c.fileNote.systemId} | Initiated: ${c.fileNote.initiatedOn}`,
+      c.fileNote.subject,
+      "",
+      ...c.fileNote.routing.flatMap((r) => [`${r.role} — ${r.actorName}, ${r.actorTitle} (${r.timestamp.slice(0, 19).replace("T", " ")})`, r.remarks, ""]),
+      `Status: ${c.fileNote.status}`,
+    ];
+    const pdf = generateSimplePdf(`File Note for LOI — ${c.stretchName}`, lines);
+    res.writeHead(200, {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="${c.id}_file_note.pdf"`,
+      "content-length": pdf.length,
+    });
+    res.end(pdf);
   });
 
   router.post("/api/cases/:id/file-note/decision", async (req, res, params) => {

@@ -7,7 +7,16 @@ import { monthlyKL, dryDayCount, outletTankStock } from "../services/predictive.
 import { requestsForOutlet } from "../services/dealerDesk.js";
 import * as wf from "../services/dealerWorkflow.js";
 import * as mod from "../services/modernisation.js";
-import { hasTrafficData, trafficForOutlet, vehicleTypeAverages, productAverages, peakHour, nozzleStatusForOutlet } from "../services/trafficAnalytics.js";
+import {
+  hasTrafficData,
+  trafficForOutlet,
+  vehicleTypeAverages,
+  productAverages,
+  peakHour,
+  nozzleStatusForOutlet,
+  monthlySlabTrend,
+  slabTrendNarrative,
+} from "../services/trafficAnalytics.js";
 import { analyseAndApplyOutletInput, outletDataNotesFor, OutletInputError } from "../services/outletInput.js";
 import type { ActionPoint } from "../types.js";
 
@@ -64,6 +73,8 @@ export function registerOutletRoutes(router: Router) {
           peakHour: peakHour(outlet.id, 7),
           nozzles: nozzleStatusForOutlet(outlet.id),
           daysOnFile: trafficForOutlet(outlet.id).length,
+          slabTrend: monthlySlabTrend(outlet.id),
+          slabTrendNarrative: slabTrendNarrative(outlet.id),
         }
       : undefined;
     sendJson(res, 200, {

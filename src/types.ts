@@ -842,6 +842,19 @@ export interface DailyTrafficSummary {
   hourlyTransactionCounts: number[];
 }
 
+/**
+ * One calendar month's real transaction-amount "slab" (vehicle-type) breakdown for an outlet —
+ * month totals plus a per-day average so a partial month (the current, still-in-progress one)
+ * isn't misread as a full month's volume. Feeds the slab-wise volume trend table and its
+ * rule-based insight (services/trafficAnalytics.ts) — no AI narrative, just the real deltas.
+ */
+export interface SlabMonthlyRow {
+  month: string; // "YYYY-MM"
+  daysOnFile: number;
+  totals: Record<VehicleType, VehicleTypeCount>;
+  avgPerDay: Record<VehicleType, VehicleTypeCount>;
+}
+
 /** Per-nozzle (DU) activity — lets the SO see if every dispensing unit is actually operating. */
 export interface NozzleActivity {
   outletId: ID;

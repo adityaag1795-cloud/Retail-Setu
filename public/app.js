@@ -380,6 +380,32 @@ function renderTrafficSection(traffic) {
       </tbody>
     </table>
     ${inactive.length ? `<p class="warn">⚠️ ${inactive.length} DU(s) look inactive — verify if genuinely down.</p>` : ""}
+    ${renderSlabTrendSection(traffic.slabTrend, traffic.slabTrendNarrative)}
+  `;
+}
+/**
+ * Month-wise transaction-amount "slab" (vehicle-type) volumes over the outlet's whole transaction
+ * log, plus a rule-based (not AI-narrated) read on whether each slab is trending up or down —
+ * every number traces back to services/trafficAnalytics.ts's monthlySlabTrend/slabTrendNarrative.
+ */
+function renderSlabTrendSection(rows, narrative) {
+    if (!rows || rows.length < 2)
+        return "";
+    const vtLabels = { TwoWheeler: "Two-Wheeler", FourWheeler: "Four-Wheeler", HMV: "HMV", BowserSupply: "Bowser supply" };
+    const vtKeys = Object.keys(vtLabels);
+    return `
+    <h4>Slab-wise volume trend <span class="muted">(month-wise, real transaction log — last month may be partial)</span></h4>
+    <table class="table">
+      <thead><tr><th>Month</th><th>Days on file</th>${vtKeys.map((k) => `<th>${vtLabels[k]} (avg txns/day)</th>`).join("")}</tr></thead>
+      <tbody>
+        ${rows
+        .map((r) => `<tr><td>${monthShortLabel(r.month)}</td><td>${r.daysOnFile}</td>${vtKeys
+        .map((k) => `<td>${r.avgPerDay[k].transactions.toFixed(1)}</td>`)
+        .join("")}</tr>`)
+        .join("")}
+      </tbody>
+    </table>
+    <div class="ai-output">${narrative.map(escapeHtml).join("\n")}</div>
   `;
 }
 const PRODUCT_COMPARISON_LABELS = [

@@ -12,8 +12,8 @@ export interface KpiMonthRow {
   month: string; // "YYYY-MM", the CY (achieved) month
   label: string; // "Apr-26"
   target: number; // last year's actual for the same fiscal month
-  achieved: number; // this year's actual so far
-  coveragePct: number | null; // achieved/target*100 — null if target is 0 (can't compute a %)
+  achieved: number | null; // this year's actual so far — null if the source has no CY data at all for this product (e.g. Power)
+  coveragePct: number | null; // achieved/target*100 — null if target is 0 or achieved is unavailable
 }
 
 export interface KpiProductSummary {
@@ -21,7 +21,7 @@ export interface KpiProductSummary {
   unit: string;
   months: KpiMonthRow[];
   yoyTarget: number;
-  yoyAchieved: number;
+  yoyAchieved: number | null;
   yoyCoveragePct: number | null;
 }
 
@@ -42,15 +42,39 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Apr=0 .. Mar=11 — position of a "YYYY-MM" month within the Apr-Mar fiscal year. */
+function fiscalIndex(monthKey: string): number {
+  const mo = Number(monthKey.split("-")[1]);
+  return (mo - 4 + 12) % 12;
+}
+
 /** outletId scopes to one outlet; omit for the whole set of outlets carrying real DSR data. */
 export function kpiTracker(outletId?: string): KpiProductSummary[] {
   const outlets = outletId ? [store.outlets.get(outletId)].filter((o): o is NonNullable<typeof o> => !!o) : [...store.outlets.values()];
 
+  // The real CY months reached so far, in fiscal order — derived from whichever products actually
+  // have CY data, so a product with none (Power) can still be reported against the same months.
+  const referenceMonths: string[] = [];
+  const seenMonths = new Set<string>();
+  for (const { key } of PRODUCTS) {
+    for (const outlet of outlets) {
+      for (const cy of outlet.productComparison?.[key]?.cy ?? []) {
+        if (!seenMonths.has(cy.month)) {
+          seenMonths.add(cy.month);
+          referenceMonths.push(cy.month);
+        }
+      }
+    }
+  }
+  referenceMonths.sort();
+
   return PRODUCTS.map(({ key, label, unit }) => {
     const byMonth = new Map<string, { target: number; achieved: number }>();
+    let hasAnyLy = false;
     for (const outlet of outlets) {
       const series = outlet.productComparison?.[key];
       if (!series) continue;
+      if (series.ly.length) hasAnyLy = true;
       const n = Math.max(series.ly.length, series.cy.length);
       for (let i = 0; i < n; i++) {
         const cy = series.cy[i];
@@ -62,30 +86,48 @@ export function kpiTracker(outletId?: string): KpiProductSummary[] {
         byMonth.set(cy.month, agg);
       }
     }
-    const months: KpiMonthRow[] = [...byMonth.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([month, { target, achieved }]) => ({
-        month,
-        label: monthLabel(month),
-        target: round2(target),
-        achieved: round2(achieved),
-        coveragePct: target > 0 ? Math.round((achieved / target) * 1000) / 10 : null,
-      }));
+
+    let months: KpiMonthRow[];
+    if (byMonth.size > 0) {
+      months = [...byMonth.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([month, { target, achieved }]) => ({
+          month,
+          label: monthLabel(month),
+          target: round2(target),
+          achieved: round2(achieved),
+          coveragePct: target > 0 ? Math.round((achieved / target) * 1000) / 10 : null,
+        }));
+    } else if (hasAnyLy && referenceMonths.length > 0) {
+      // Real target (last year's actual) exists but the source has no CY figure at all for this
+      // product (true for Power) — report the target for the record rather than hiding it, but
+      // don't fabricate an "achieved" figure that was never supplied.
+      months = referenceMonths.map((month) => {
+        const idx = fiscalIndex(month);
+        let target = 0;
+        for (const outlet of outlets) target += outlet.productComparison?.[key]?.ly[idx]?.value ?? 0;
+        return { month, label: monthLabel(month), target: round2(target), achieved: null, coveragePct: null };
+      });
+    } else {
+      months = [];
+    }
+
     const yoyTarget = round2(months.reduce((s, m) => s + m.target, 0));
-    const yoyAchieved = round2(months.reduce((s, m) => s + m.achieved, 0));
+    const hasAchieved = months.some((m) => m.achieved !== null);
+    const yoyAchieved = hasAchieved ? round2(months.reduce((s, m) => s + (m.achieved ?? 0), 0)) : null;
     return {
       product: label,
       unit,
       months,
       yoyTarget,
       yoyAchieved,
-      yoyCoveragePct: yoyTarget > 0 ? Math.round((yoyAchieved / yoyTarget) * 1000) / 10 : null,
+      yoyCoveragePct: yoyTarget > 0 && yoyAchieved !== null ? Math.round((yoyAchieved / yoyTarget) * 1000) / 10 : null,
     };
   }).filter((p) => p.months.length > 0);
 }
 
 export interface SalesAreaPeriodFigure {
-  achieved: number;
+  achieved: number | null;
   target: number;
   coveragePct: number | null;
 }

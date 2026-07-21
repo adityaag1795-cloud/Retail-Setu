@@ -1637,6 +1637,10 @@ async function renderAnalytics(salesSummaryOutletId) {
         renderAnalytics(id || undefined);
     });
 }
+/** "No CY data on file" (Power) reads better than a bare "-" which could be mistaken for a real zero. */
+function fmtAchieved(n) {
+    return n != null ? n.toFixed(2) : "No CY data";
+}
 function renderSalesAreaSummarySection(rows) {
     if (!rows.length)
         return `<p class="muted">No real DSR data on file for this scope yet.</p>`;
@@ -1649,10 +1653,10 @@ function renderSalesAreaSummarySection(rows) {
         .map((r) => `<tr>
           <td>${escapeHtml(r.product)} <span class="muted">(${escapeHtml(r.unit)})</span></td>
           <td>${r.currentMonth.target.toFixed(2)}</td>
-          <td>${r.currentMonth.achieved.toFixed(2)}</td>
+          <td>${fmtAchieved(r.currentMonth.achieved)}</td>
           <td>${r.currentMonth.coveragePct != null ? `${r.currentMonth.coveragePct}%` : "-"}</td>
           <td>${r.yearToDate.target.toFixed(2)}</td>
-          <td>${r.yearToDate.achieved.toFixed(2)}</td>
+          <td>${fmtAchieved(r.yearToDate.achieved)}</td>
           <td>${r.yearToDate.coveragePct != null ? `${r.yearToDate.coveragePct}%` : "-"}</td>
         </tr>`)
         .join("")}
@@ -1815,9 +1819,9 @@ function renderKpiTrackerSection(kpi) {
       <thead><tr><th>Month</th><th>Target (LY)</th><th>Achieved (CY)</th><th>% Covered</th></tr></thead>
       <tbody>
         ${p.months
-        .map((m) => `<tr><td>${escapeHtml(m.label)}</td><td>${m.target.toFixed(2)}</td><td>${m.achieved.toFixed(2)}</td><td>${m.coveragePct != null ? `${m.coveragePct}%` : "-"}</td></tr>`)
+        .map((m) => `<tr><td>${escapeHtml(m.label)}</td><td>${m.target.toFixed(2)}</td><td>${fmtAchieved(m.achieved)}</td><td>${m.coveragePct != null ? `${m.coveragePct}%` : "-"}</td></tr>`)
         .join("")}
-        <tr><td><strong>YoY (to date)</strong></td><td><strong>${p.yoyTarget.toFixed(2)}</strong></td><td><strong>${p.yoyAchieved.toFixed(2)}</strong></td><td><strong>${p.yoyCoveragePct != null ? `${p.yoyCoveragePct}%` : "-"}</strong></td></tr>
+        <tr><td><strong>YoY (to date)</strong></td><td><strong>${p.yoyTarget.toFixed(2)}</strong></td><td><strong>${fmtAchieved(p.yoyAchieved)}</strong></td><td><strong>${p.yoyCoveragePct != null ? `${p.yoyCoveragePct}%` : "-"}</strong></td></tr>
       </tbody>
     </table>`)
         .join("");

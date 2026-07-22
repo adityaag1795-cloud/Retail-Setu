@@ -3,6 +3,209 @@ import { escapeHtml, qs, qsa, toast, formToObject } from "./dom.js";
 
 const app = () => qs<HTMLElement>("#app");
 
+// ---------------------------------------------------------------------------
+// Reusable SVG line chart — two-series (target/LY vs achieved/CY) trend visual.
+// Zero-dependency (no charting library): plain inline SVG, styled to the
+// HPCL blue/white theme. Palette (blue #0057a8 / orange #eb6834) validated
+// with the data-viz skill's palette checker — worst adjacent CVD deltaE 25.4,
+// normal-vision deltaE 37.4, both well clear of the 8/15 targets.
+// ---------------------------------------------------------------------------
+
+interface LineChartSeries {
+  name: string;
+  color: string;
+  values: (number | null)[];
+}
+
+function renderLineChartSVG(labels: string[], series: LineChartSeries[], opts?: { unit?: string }): string {
+  const width = 640;
+  const height = 220;
+  const padLeft = 52;
+  const padRight = 16;
+  const padTop = 16;
+  const padBottom = 28;
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
+
+  const allValues = series.flatMap((s) => s.values).filter((v): v is number => v != null);
+  const maxRaw = allValues.length ? Math.max(...allValues) : 1;
+  const max = maxRaw <= 0 ? 1 : maxRaw * 1.15;
+  const n = labels.length;
+  const xStep = n > 1 ? plotW / (n - 1) : 0;
+  const xAt = (i: number) => padLeft + xStep * i;
+  const yAt = (v: number) => padTop + plotH * (1 - v / max);
+
+  const gridLines = 4;
+  const gridSvg = Array.from({ length: gridLines + 1 }, (_, i) => {
+    const frac = i / gridLines;
+    const y = padTop + plotH * (1 - frac);
+    const val = max * frac;
+    return `
+      <line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="var(--border)" stroke-width="1" />
+      <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${val >= 100 ? Math.round(val) : val.toFixed(1)}</text>`;
+  }).join("");
+
+  // Thin out x-axis labels once there are more than ~8 months, so they don't collide.
+  const labelStride = n > 8 ? Math.ceil(n / 8) : 1;
+  const xLabelsSvg = labels
+    .map((l, i) => (i % labelStride === 0 ? `<text x="${xAt(i)}" y="${height - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${escapeHtml(l)}</text>` : ""))
+    .join("");
+
+  const seriesSvg = series
+    .map((s) => {
+      const pts = s.values.map((v, i) => (v == null ? null : { x: xAt(i), y: yAt(v) }));
+      // Break the polyline across null (missing-data) points rather than interpolating through them.
+      const segments: { x: number; y: number }[][] = [];
+      let cur: { x: number; y: number }[] = [];
+      for (const p of pts) {
+        if (p == null) {
+          if (cur.length) segments.push(cur);
+          cur = [];
+        } else {
+          cur.push(p);
+        }
+      }
+      if (cur.length) segments.push(cur);
+
+      const pathSvg = segments
+        .map((seg) => `<polyline points="${seg.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />`)
+        .join("");
+
+      const markersSvg = pts
+        .map((p, i) => {
+          if (p == null) return "";
+          const label = s.values[i];
+          return `<g><circle cx="${p.x}" cy="${p.y}" r="8" fill="transparent"><title>${escapeHtml(labels[i]!)} — ${escapeHtml(s.name)}: ${label!.toFixed(2)}${opts?.unit ? " " + opts.unit : ""}</title></circle><circle cx="${p.x}" cy="${p.y}" r="3" fill="${s.color}" /></g>`;
+        })
+        .join("");
+
+      // Direct end-of-line label — neutral ink, not series color (the legend swatch carries identity).
+      const lastIdx = [...pts].reverse().findIndex((p) => p != null);
+      const lastPt = lastIdx >= 0 ? pts[pts.length - 1 - lastIdx] : null;
+      const lastVal = lastIdx >= 0 ? s.values[pts.length - 1 - lastIdx] : null;
+      const endLabelSvg =
+        lastPt && lastVal != null
+          ? `<text x="${Math.min(lastPt.x + 6, width - padRight)}" y="${lastPt.y - 6}" font-size="10" fill="var(--text)" text-anchor="${lastPt.x + 6 > width - padRight - 30 ? "end" : "start"}">${lastVal.toFixed(1)}</text>`
+          : "";
+
+      return pathSvg + markersSvg + endLabelSvg;
+    })
+    .join("");
+
+  const legendSvg = series
+    .map(
+      (s, i) =>
+        `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px"><span style="width:10px;height:10px;border-radius:50%;background:${s.color};display:inline-block"></span><span class="muted" style="font-size:0.8rem">${escapeHtml(s.name)}</span></span>`,
+    )
+    .join("");
+
+  return `
+    <div class="chart">
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${series.map((s) => s.name).join(" vs ")} trend chart">
+        ${gridSvg}
+        ${xLabelsSvg}
+        ${seriesSvg}
+      </svg>
+      <div class="chart__legend">${legendSvg}</div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Gantt chart with critical path — post-NOC project schedule (GanttTask[] on
+// DealerCase.project). Each task carries at most one `dependency` (the task
+// it starts after), so the critical path is the longest-duration chain through
+// that dependency graph, computed here rather than assumed — today's fixed
+// 5-task sequence happens to make every task critical (there's only one chain
+// to compare), but the computation holds if the schedule ever branches.
+// ---------------------------------------------------------------------------
+
+function computeCriticalPath(tasks: any[]): { criticalIds: Set<string>; totalDays: number } {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const durationDays = (t: any) => (new Date(t.endDate).getTime() - new Date(t.startDate).getTime()) / 86400000;
+
+  const earliestFinish = new Map<string, number>();
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < tasks.length + 1) {
+    changed = false;
+    guard++;
+    for (const t of tasks) {
+      const depFinish = t.dependency ? (earliestFinish.get(t.dependency) ?? 0) : 0;
+      const finish = depFinish + durationDays(t);
+      if (earliestFinish.get(t.id) !== finish) {
+        earliestFinish.set(t.id, finish);
+        changed = true;
+      }
+    }
+  }
+
+  let endTask: any = null;
+  let maxFinish = -Infinity;
+  for (const t of tasks) {
+    const f = earliestFinish.get(t.id) ?? 0;
+    if (f > maxFinish) {
+      maxFinish = f;
+      endTask = t;
+    }
+  }
+
+  const criticalIds = new Set<string>();
+  let cur = endTask;
+  while (cur) {
+    criticalIds.add(cur.id);
+    cur = cur.dependency ? byId.get(cur.dependency) : null;
+  }
+  return { criticalIds, totalDays: Math.round(maxFinish) };
+}
+
+const GANTT_STATUS_COLOR: Record<string, string> = {
+  Done: "var(--accent-2)",
+  InProgress: "var(--warn)",
+  Delayed: "var(--danger)",
+  NotStarted: "var(--muted)",
+};
+
+function renderGanttChart(tasks: any[]): string {
+  if (!tasks.length) return `<p class="muted">No project tasks on file.</p>`;
+  const { criticalIds, totalDays } = computeCriticalPath(tasks);
+  const minDate = Math.min(...tasks.map((t) => new Date(t.startDate).getTime()));
+  const maxDate = Math.max(...tasks.map((t) => new Date(t.endDate).getTime()));
+  const totalMs = Math.max(maxDate - minDate, 86400000);
+  const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+
+  const rows = tasks
+    .map((t) => {
+      const startMs = new Date(t.startDate).getTime();
+      const endMs = new Date(t.endDate).getTime();
+      const startPct = ((startMs - minDate) / totalMs) * 100;
+      const widthPct = Math.max(((endMs - startMs) / totalMs) * 100, 1.5);
+      const isCritical = criticalIds.has(t.id);
+      const color = GANTT_STATUS_COLOR[t.status] ?? "var(--muted)";
+      return `
+        <div class="gantt-row">
+          <div class="gantt-row__label">${escapeHtml(t.name)}${isCritical ? `<span class="badge" style="background:var(--danger);color:white;border:none">Critical</span>` : ""}</div>
+          <div class="gantt-row__track">
+            <div class="gantt-bar${isCritical ? " gantt-bar--critical" : ""}" style="left:${startPct}%;width:${widthPct}%;background:${color}" title="${escapeHtml(t.name)}: ${t.startDate} to ${t.endDate} (${escapeHtml(t.status)})">${escapeHtml(t.name)}</div>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  return `
+    <div class="chart">
+      ${rows}
+      <div class="gantt-axis"><span>${fmtDate(minDate)}</span><span>${fmtDate((minDate + maxDate) / 2)}</span><span>${fmtDate(maxDate)}</span></div>
+      <div class="chart__legend">
+        <span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px"><span style="width:10px;height:10px;border-radius:2px;background:var(--muted);display:inline-block"></span><span class="muted" style="font-size:0.8rem">Not started</span></span>
+        <span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px"><span style="width:10px;height:10px;border-radius:2px;background:var(--warn);display:inline-block"></span><span class="muted" style="font-size:0.8rem">In progress</span></span>
+        <span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px"><span style="width:10px;height:10px;border-radius:2px;background:var(--accent-2);display:inline-block"></span><span class="muted" style="font-size:0.8rem">Done</span></span>
+        <span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px"><span style="width:10px;height:10px;border-radius:2px;background:var(--danger);display:inline-block"></span><span class="muted" style="font-size:0.8rem">Delayed</span></span>
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;border:2px solid var(--text);display:inline-block"></span><span class="muted" style="font-size:0.8rem">Critical path</span></span>
+      </div>
+      <p class="muted">Critical path length: <strong>${totalDays}</strong> day(s), end-to-end.</p>
+    </div>`;
+}
+
 /** Resolves a TaskItem/CalendarEvent-style linkedModule+linkedRecordId pair to a hash link, if any. */
 function linkedRecordHref(linkedModule?: string, linkedRecordId?: string): string | undefined {
   if (!linkedModule || !linkedRecordId) return undefined;
@@ -489,8 +692,20 @@ function renderProductComparisonSection(pc: any): string {
       );
     }
     const growthTotal = lyYtdTotal > 0 && cyTotal > 0 ? `${(((cyTotal - lyYtdTotal) / lyYtdTotal) * 100).toFixed(1)}%` : "-";
+    const chartLabels: string[] = [];
+    const lyValues: (number | null)[] = [];
+    const cyValues: (number | null)[] = [];
+    for (let i = 0; i < n; i++) {
+      chartLabels.push(monthShortLabel(series.ly[i]?.month ?? series.cy[i]?.month ?? ""));
+      lyValues.push(series.ly[i]?.value ?? null);
+      cyValues.push(series.cy[i]?.value ?? null);
+    }
     return `
       <h4>${escapeHtml(label)} <span class="muted">(${unit})</span></h4>
+      ${renderLineChartSVG(chartLabels, [
+        { name: "LY (target)", color: "#eb6834", values: lyValues },
+        { name: "CY (achieved)", color: "#0057a8", values: cyValues },
+      ], { unit })}
       <table class="table">
         <thead><tr><th>Month</th><th>LY (target)</th><th>CY (achieved)</th><th>Growth</th></tr></thead>
         <tbody>
@@ -1165,14 +1380,11 @@ async function renderCaseDetail(id: string) {
     sections.push(renderNroBudgetSection(c, budgetCostEstimate));
   }
 
-  // Project execution / Gantt
+  // Project execution / Gantt — post-NOC project schedule with a real critical-path highlight.
   if (c.project) {
     sections.push(`
-      <h3>Project management &amp; Gantt chart (AI-generated)</h3>
-      <table class="table">
-        <thead><tr><th>Task</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
-        <tbody>${c.project.ganttTasks.map((t: any) => `<tr><td>${escapeHtml(t.name)}</td><td>${t.startDate}</td><td>${t.endDate}</td><td>${escapeHtml(t.status)}</td></tr>`).join("")}</tbody>
-      </table>
+      <h3>Project management &amp; Gantt chart <span class="muted">(post-NOC schedule, critical path highlighted)</span></h3>
+      ${renderGanttChart(c.project.ganttTasks)}
       <p>Estimated commissioning: <strong>${c.project.estimatedCommissionDate}</strong></p>
       ${c.stage === "ProjectExecution" ? `<button id="commission-btn" class="btn">Commission outlet — mark Nozzle Sales Started</button>` : ""}
     `);
@@ -2313,6 +2525,14 @@ function renderKpiTrackerSection(kpi: any[]): string {
     .map(
       (p) => `
     <h4>${escapeHtml(p.product)} <span class="muted">(${p.unit})</span></h4>
+    ${renderLineChartSVG(
+      p.months.map((m: any) => m.label),
+      [
+        { name: "Target (LY)", color: "#eb6834", values: p.months.map((m: any) => m.target) },
+        { name: "Achieved (CY)", color: "#0057a8", values: p.months.map((m: any) => m.achieved) },
+      ],
+      { unit: p.unit },
+    )}
     <table class="table">
       <thead><tr><th>Month</th><th>Target (LY)</th><th>Achieved (CY)</th><th>% Covered</th></tr></thead>
       <tbody>

@@ -2630,7 +2630,6 @@ function renderCompletedLog(groups: any[]): string {
 // ---------------------------------------------------------------------------
 
 async function renderKnowledge() {
-  const clauses = await api.get("/policy-clauses");
   app().innerHTML = `
     <section class="panel">
       <h2>Knowledge Centre — Policy Bot</h2>
@@ -2641,12 +2640,6 @@ async function renderKnowledge() {
         <button type="submit" class="btn">Ask</button>
       </form>
       <div id="policy-answer"></div>
-
-      <h3>Loaded policy clauses</h3>
-      <table class="table">
-        <thead><tr><th>Document</th><th>Clause</th><th>Heading</th><th>Text</th></tr></thead>
-        <tbody>${clauses.map((c: any) => `<tr><td>${escapeHtml(c.documentTitle)}</td><td>${escapeHtml(c.clauseNumber)}</td><td>${escapeHtml(c.heading)}</td><td>${escapeHtml(c.text)}</td></tr>`).join("")}</tbody>
-      </table>
 
       <h3>Add a policy clause</h3>
       <form id="add-policy-form" class="form">

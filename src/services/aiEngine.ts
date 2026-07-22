@@ -348,8 +348,59 @@ class AnthropicAiEngine implements AiEngine {
   }
 
   private buildPrompt(kind: PromptKind, ctx: Record<string, unknown>): string {
+    if (kind === "policyAnswer") return this.buildPolicyAnswerPrompt(ctx);
     const base = `You are drafting an internal document for an oil-company retail network operations team. Be concise and professional.`;
     return `${base}\n\nDocument type: ${kind}\nContext (JSON): ${JSON.stringify(ctx, null, 2)}\n\nDraft the document now.`;
+  }
+
+  /**
+   * A dedicated RAG-style prompt for the Knowledge Centre, rather than the generic "draft this
+   * document" template above. The offline TemplateAiEngine already handles keyword/stem/intent
+   * matching mechanically (see policyBot.ts); this prompt hands the SAME real clause text to Claude
+   * and asks it to do what a keyword matcher can't — read the question for what it's actually
+   * asking (its "essence"), reason over every candidate clause's actual meaning, and only then
+   * decide which one(s) genuinely answer it. `candidatePool` is deliberately wider and
+   * multi-document (unlike the single-document `matchedClauses` used for the offline template and
+   * for the on-screen citation list) so a real semantic mismatch in the mechanical scoring doesn't
+   * hide the right clause from Claude too.
+   */
+  private buildPolicyAnswerPrompt(ctx: Record<string, unknown>): string {
+    const { question, candidatePool } = ctx as {
+      question: string;
+      candidatePool: { documentTitle: string; clauseNumber: string; heading: string; text: string }[];
+    };
+    const clauseBlock = candidatePool
+      .map(
+        (c, i) =>
+          `[${i + 1}] Document: ${c.documentTitle}\nClause: ${c.clauseNumber} — ${c.heading}\nText: "${c.text}"`,
+      )
+      .join("\n\n");
+    return [
+      `You are the Knowledge Centre assistant for an oil-company retail network operations team. You answer`,
+      `strictly from the real policy clauses given below — never from general knowledge or invented facts.`,
+      ``,
+      `Question: "${question}"`,
+      ``,
+      `Candidate clauses (retrieved by keyword/phrase matching, which is mechanical and can miss the real`,
+      `intent of the question — read every one on its own merits, not just for shared words with the question):`,
+      ``,
+      clauseBlock || "(no candidate clauses were retrieved at all)",
+      ``,
+      `Instructions:`,
+      `1. Judge each candidate by what it actually means, not by how many words it shares with the question.`,
+      `   A clause can be the right answer even with little word overlap; a clause can share words with the`,
+      `   question and still be irrelevant. Identify the question's real intent (e.g. "who" wants an approval`,
+      `   authority or designation, "how much"/"what fee" wants a number or amount, "when"/"how long" wants a`,
+      `   duration or deadline) and find the clause(s) that actually deliver that.`,
+      `2. If one or more candidates genuinely answer the question, name the single most relevant governing`,
+      `   document and quote its clause(s) verbatim (do not paraphrase or invent wording) with clause number`,
+      `   and heading, then give a short, direct answer to the question grounded only in that quoted text.`,
+      `   Cite from only that one document even if other documents' clauses also matched loosely.`,
+      `3. If none of the candidates actually answer the question, say so plainly — do not stretch an`,
+      `   unrelated clause into an answer, and do not fabricate a clause or number that isn't in the text above.`,
+      `4. Be concise: a few sentences plus the quoted clause text is enough. No preamble, no meta-commentary`,
+      `   about how you searched.`,
+    ].join("\n");
   }
 }
 

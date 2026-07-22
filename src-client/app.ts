@@ -2391,7 +2391,7 @@ function wireCaseHandlers(c: any) {
 function renderPredictiveInsightsSection(insights: any): string {
   const stockVsSales = insights.stockVsSales as { outletId: string; outletName: string; kind: string; message: string }[];
   const dryRisk = insights.dryRiskWithoutCover as { outletId: string; outletName: string; criticality: string; message: string }[];
-  const itpsTrend = insights.itpsGrowthTrend as { outletId: string; outletName: string; firstHalfAvg: number; secondHalfAvg: number; changePct: number; direction: "up" | "down" }[];
+  const itpsTrend = insights.itpsGrowthTrend as { best: { outletId: string; outletName: string; firstHalfAvg: number; secondHalfAvg: number; changePct: number; direction: "up" | "down" } | null; worst: { outletId: string; outletName: string; firstHalfAvg: number; secondHalfAvg: number; changePct: number; direction: "up" | "down" } | null };
   const itpsInactive = insights.itpsInactiveOutlets as { outletId: string; outletName: string; days: number; lastDates: string[] }[];
   const sm = insights.suddenMoves;
   const moveLine = (m: any) => `<li>${escapeHtml(m.outletName)} — ${escapeHtml(m.product)} ${m.direction === "up" ? "up" : "down"} ${Math.abs(m.growthPct)}% vs last year</li>`;
@@ -2419,16 +2419,14 @@ function renderPredictiveInsightsSection(insights: any): string {
           : ""
       }
       ${
-        itpsTrend.length
-          ? `<ul>${itpsTrend
-              .map(
-                (x) =>
-                  `<li><span class="badge badge--${x.direction === "up" ? "resolved" : "escalated"}">${x.direction === "up" ? "Growth" : "Degrowth"}</span> ${escapeHtml(x.outletName)}: ${x.direction === "up" ? "up" : "down"} ${Math.abs(x.changePct)}% (${x.firstHalfAvg} &rarr; ${x.secondHalfAvg} avg txns/day)</li>`,
-              )
-              .join("")}</ul>`
+        itpsTrend.best || itpsTrend.worst
+          ? `<ul>
+              ${itpsTrend.best ? `<li><span class="badge badge--resolved">Best</span> ${escapeHtml(itpsTrend.best.outletName)}: up ${itpsTrend.best.changePct}% (${itpsTrend.best.firstHalfAvg} &rarr; ${itpsTrend.best.secondHalfAvg} avg txns/day)</li>` : ""}
+              ${itpsTrend.worst ? `<li><span class="badge badge--escalated">Worst</span> ${escapeHtml(itpsTrend.worst.outletName)}: down ${Math.abs(itpsTrend.worst.changePct)}% (${itpsTrend.worst.firstHalfAvg} &rarr; ${itpsTrend.worst.secondHalfAvg} avg txns/day)</li>` : ""}
+            </ul>`
           : ""
       }
-      ${itpsInactive.length === 0 && itpsTrend.length === 0 ? `<p class="muted">No outlet currently shows a notable ITPS growth/degrowth trend or a transaction-free streak.</p>` : ""}
+      ${itpsInactive.length === 0 && !itpsTrend.best && !itpsTrend.worst ? `<p class="muted">No outlet currently shows a notable ITPS growth/degrowth trend or a transaction-free streak.</p>` : ""}
     </div>
     <h4>Sudden YoY swings <span class="muted">(&plusmn;30% or more, real DSR month vs same month last year)</span></h4>
     <p class="muted">${insights.partialMonthCaveat}</p>
@@ -2438,17 +2436,52 @@ function renderPredictiveInsightsSection(insights: any): string {
     </div>`;
 }
 
+/**
+ * Suggested visit route (tourCircuit.ts): every real risk/opportunity signal already on this page
+ * (dry-today, Criticality Monitor, ITPS inactivity, below-trading-area-average, inactive DUs,
+ * sales-trend x stock, sudden dips, overdue MOM) combined into one priority score per outlet, then
+ * sequenced by real outlet location — never a fabricated stop, an outlet with no active signal
+ * simply doesn't appear.
+ */
+function renderTourCircuitSection(stops: any[]): string {
+  if (!stops.length) {
+    return `<p class="muted">No outlet currently has an active risk/opportunity signal — nothing to route today.</p>`;
+  }
+  return `
+    <table class="table">
+      <thead><tr><th>#</th><th>Outlet</th><th>District</th><th>Priority</th><th>Why visit</th><th>Distance from previous stop</th></tr></thead>
+      <tbody>
+        ${stops
+          .map(
+            (s: any) => `<tr>
+          <td>${s.order}</td>
+          <td><a href="#/outlets/${s.outletId}">${escapeHtml(s.outletName)}</a></td>
+          <td>${escapeHtml(s.district)}</td>
+          <td>${s.priorityScore}</td>
+          <td><ul>${s.reasons.map((r: string) => `<li>${escapeHtml(r)}</li>`).join("")}</ul></td>
+          <td>${s.distanceFromPrevKm == null ? "&mdash; (start)" : `${s.distanceFromPrevKm} km`}</td>
+        </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>`;
+}
+
 async function renderAnalytics(salesSummaryOutletId?: string) {
-  const [summary, outlets, salesSummary, insights] = await Promise.all([
+  const [summary, outlets, salesSummary, insights, tourCircuit] = await Promise.all([
     api.get("/analytics/summary"),
     api.get("/outlets"),
     api.get(`/analytics/sales-area-summary${salesSummaryOutletId ? `?outletId=${salesSummaryOutletId}` : ""}`),
     api.get("/analytics/predictive-insights"),
+    api.get("/analytics/tour-circuit"),
   ]);
   app().innerHTML = `
     <section class="panel">
       <h2>Predictive Analysis</h2>
       <p class="muted">Sales feed shown as fetched from CRIS. Analytical dashboard for the Sales Officer — ask anything.</p>
+
+      <h3>Suggested Tour Circuit for SO <span class="muted">(AI-prioritised — every real risk signal below, combined into one visit-priority route by real outlet location)</span></h3>
+      ${renderTourCircuitSection(tourCircuit.stops)}
 
       <h3>Sales Area Summary <span class="muted">(real data — current month &amp; year to date)</span></h3>
       <label>Scope

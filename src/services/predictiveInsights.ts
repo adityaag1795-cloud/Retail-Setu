@@ -156,12 +156,7 @@ export interface ItpsTrendRow {
   direction: "up" | "down";
 }
 
-/**
- * Real growing/degrowing ITPS (online) transaction trend per outlet — first half vs second half
- * of whatever days are on file, from HPCL's own Online Transactions report. Only outlets present
- * in that report; only swings of at least ITPS_TREND_PCT are surfaced, worst/best first.
- */
-export function itpsGrowthTrend(): ItpsTrendRow[] {
+function allItpsGrowthTrend(): ItpsTrendRow[] {
   const outletIds = [...new Set(store.itpsTransactions.map((r) => r.outletId))];
   const rows: ItpsTrendRow[] = [];
   for (const outletId of outletIds) {
@@ -179,7 +174,20 @@ export function itpsGrowthTrend(): ItpsTrendRow[] {
     if (Math.abs(changePct) < ITPS_TREND_PCT) continue;
     rows.push({ outletId, outletName: outlet.name, firstHalfAvg, secondHalfAvg, changePct, direction: changePct > 0 ? "up" : "down" });
   }
-  return rows.sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+  return rows;
+}
+
+/**
+ * Real growing/degrowing ITPS (online) transaction trend — first half vs second half of whatever
+ * days are on file, from HPCL's own Online Transactions report. Only the single best-performing
+ * and single worst-performing outlet (by % change) are surfaced, either or both null if no outlet
+ * clears the ITPS_TREND_PCT swing threshold in that direction.
+ */
+export function itpsGrowthTrend(): { best: ItpsTrendRow | null; worst: ItpsTrendRow | null } {
+  const rows = allItpsGrowthTrend();
+  const up = rows.filter((r) => r.direction === "up").sort((a, b) => b.changePct - a.changePct);
+  const down = rows.filter((r) => r.direction === "down").sort((a, b) => a.changePct - b.changePct);
+  return { best: up[0] ?? null, worst: down[0] ?? null };
 }
 
 export interface ItpsInactiveRow {

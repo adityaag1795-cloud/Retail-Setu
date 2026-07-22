@@ -24,6 +24,12 @@ body {
   color: var(--text);
 }
 
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 .topbar {
   display: flex;
   align-items: center;

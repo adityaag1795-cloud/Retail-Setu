@@ -50,7 +50,7 @@ function fixedAssetSummary(outlet: ReturnType<typeof outletOrThrow>) {
 
 export function registerOutletRoutes(router: Router) {
   router.get("/api/outlets", (_req, res) => {
-    sendJson(res, 200, [...store.outlets.values()]);
+    sendJson(res, 200, store.visibleOutlets());
   });
 
   router.get("/api/outlets/:id", (_req, res, params) => {

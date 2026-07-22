@@ -3087,6 +3087,28 @@ for (const outlet of seedOutlets) {
   }
 }
 
+// Prototype curation: hide every outlet except the 11 chosen for the demo (the 10 outlets with
+// the richest real-data coverage across every module, plus Gayatri Filling Station for its real,
+// already-documented resitement narrative) — see store.visibleOutlets(). Hidden outlets remain
+// directly reachable by ID (a Module 2 case link still resolves) but are excluded from every
+// listing surface.
+const CURATED_VISIBLE_OUTLET_IDS = new Set([
+  "OUT-41056574", // Sunder Service Station
+  "OUT-41007896", // HP Laxmi Filling Station
+  "OUT-41056955", // The Auto Supply Company
+  "OUT-41068065", // HP Service Centre - Faridabad
+  "OUT-41027708", // Paawan Filliing Station
+  "OUT-41028014", // Shiva Cares
+  "OUT-41056957", // Raj Auto Service
+  "OUT-41014439", // HP Ellar Filling Station
+  "OUT-41015064", // HP Kalra Filling Station
+  "OUT-41010178", // HP Om Sai Ram Oil Company
+  "OUT-41014421", // Gayatri Filling Station
+]);
+for (const outlet of seedOutlets) {
+  if (!CURATED_VISIBLE_OUTLET_IDS.has(outlet.id)) outlet.hiddenInPrototype = true;
+}
+
 // ---------------------------------------------------------------------------
 // Module 4 — Team (real names from the routing chain of the Roopendra file
 // note and the Nacholi feasibility report signature).
@@ -5050,12 +5072,109 @@ export const seedPolicyClauses: PolicyClause[] = [
 // Module 2 — Dealer Selection & Development cases
 // ---------------------------------------------------------------------------
 
-// Deliberately empty. The reference case files (Kalka Sales/Nacholi, Gayatri
-// resitement, Roopendra) were used to ground the AI engine's templates and
-// the type model in real formats — not to pre-populate this list. A real
-// Sales Officer opens a case here (new-site development or resitement, for
-// any outlet/stretch) and the system generates each document fresh.
-export const seedDealerCases: DealerCase[] = [];
+// The general rule above still holds — a real Sales Officer opens a case through the UI and every
+// document is generated fresh. The exception below is the prototype's curated 11-outlet demo set:
+// each already-operational outlet gets a "Commissioned"-stage case (no fabricated intermediate
+// workflow history — roster/application/inspections/file note/LOI are left empty, same as any
+// other field with no real data on file) purely so Module 2's case list links back to a real
+// outlet instead of standing empty. Gayatri Filling Station is different: its case captures the
+// real resitement matter already on file — the actual dealer request and legal opinion (see the
+// COMM-GAYATRI-* communications above) — at the stage it has genuinely reached (evaluation, no
+// technical committee appointed yet), not a fabricated resolution.
+const CURATED_COMMISSIONED_CASE_OUTLET_IDS = [
+  "OUT-41056574", // Sunder Service Station
+  "OUT-41007896", // HP Laxmi Filling Station
+  "OUT-41056955", // The Auto Supply Company
+  "OUT-41068065", // HP Service Centre - Faridabad
+  "OUT-41027708", // Paawan Filliing Station
+  "OUT-41028014", // Shiva Cares
+  "OUT-41056957", // Raj Auto Service
+  "OUT-41014439", // HP Ellar Filling Station
+  "OUT-41015064", // HP Kalra Filling Station
+  "OUT-41010178", // HP Om Sai Ram Oil Company
+];
+
+function competitorContextFor(outlet: Outlet): string {
+  const ta = outlet.tradingAreaId ? seedTradingAreas.find((t) => t.id === outlet.tradingAreaId) : undefined;
+  return ta
+    ? `Real dealer-wise competitive picture on file — see Module 1 Trading Area: ${ta.name}.`
+    : "No trading-area competitive report on file for this catchment yet.";
+}
+
+const curatedCommissionedCases: DealerCase[] = CURATED_COMMISSIONED_CASE_OUTLET_IDS.map((outletId) => {
+  const outlet = seedOutlets.find((o) => o.id === outletId)!;
+  return {
+    id: `CASE-${outletId}`,
+    caseType: "NewSiteDevelopment",
+    salesArea: outlet.salesArea,
+    stretchName: outlet.name,
+    competitorContext: competitorContextFor(outlet),
+    stage: "Commissioned",
+    createdAt: new Date().toISOString(),
+    outletId: outlet.id,
+    interestedApplicants: [],
+    roster: [],
+    inspections: {},
+    milestones: [],
+    activityLog: [
+      {
+        id: `ACT-${outletId}-LINK`,
+        timestamp: new Date().toISOString(),
+        actor: "SO",
+        action: "Case record linked to already-operational outlet",
+        details: "Created for the prototype's curated outlet set — this outlet was already commissioned; no fabricated intermediate workflow history is recorded here.",
+      },
+    ],
+  };
+});
+
+const gayatriResitementRequest = seedCommunications.find((c) => c.id === "COMM-GAYATRI-RESITEMENT-REQUEST")!;
+const gayatriLegalOpinion = seedCommunications.find((c) => c.id === "COMM-GAYATRI-LEGAL-OPINION")!;
+const gayatriOutlet = seedOutlets.find((o) => o.id === "OUT-41014421")!;
+
+const gayatriResitementCase: DealerCase = {
+  id: "CASE-OUT-41014421-RESITEMENT",
+  caseType: "Resitement",
+  salesArea: gayatriOutlet.salesArea,
+  stretchName: "Rao Farms, Faridpur, Sector 78/99 (proposed alternate site)",
+  competitorContext: competitorContextFor(gayatriOutlet),
+  stage: "StretchIdentification",
+  createdAt: new Date(gayatriResitementRequest.date).toISOString(),
+  outletId: gayatriOutlet.id,
+  resitement: {
+    existingOutletId: gayatriOutlet.id,
+    existingOutletName: gayatriOutlet.name,
+    groundsSelected: [
+      "1.1(f) — Corporation has no registered/valid lease/option available for the site, and no protection under any local tenancy Act (per Guidelines on Resitement, Ref: RET/AKS/RESITEMENT)",
+    ],
+    dealerRequestText: gayatriResitementRequest.summary,
+    dealerRequestDate: gayatriResitementRequest.date,
+    legalOpinionText: gayatriLegalOpinion.summary,
+    technicalEvaluationCommittee: [],
+  },
+  interestedApplicants: [],
+  roster: [],
+  inspections: {},
+  milestones: [],
+  activityLog: [
+    {
+      id: "ACT-GAYATRI-REQUEST",
+      timestamp: new Date(gayatriResitementRequest.date).toISOString(),
+      actor: "SO",
+      action: "Resitement case opened",
+      details: gayatriResitementRequest.subject,
+    },
+    {
+      id: "ACT-GAYATRI-LEGAL",
+      timestamp: new Date(gayatriLegalOpinion.date).toISOString(),
+      actor: "SO",
+      action: "Legal opinion received",
+      details: gayatriLegalOpinion.subject,
+    },
+  ],
+};
+
+export const seedDealerCases: DealerCase[] = [...curatedCommissionedCases, gayatriResitementCase];
 
 // ---------------------------------------------------------------------------
 // Module 7 — Dealer Request Desk

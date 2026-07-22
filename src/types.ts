@@ -65,6 +65,12 @@ export interface Outlet {
    * than guessed. See data/productComparisonData.ts.
    */
   productComparison?: OutletProductComparison;
+  /**
+   * Set true to curate the prototype down to a small demo set — hidden outlets are excluded from
+   * every listing surface (repository, KPI tracker, analytics, trading area cards) but remain
+   * directly reachable by ID (e.g. a Module 2 case link) so nothing 404s. See seed.ts.
+   */
+  hiddenInPrototype?: boolean;
 }
 
 /** One month's real volume for a product — KL for MS/HSD/LUBE/DEF, units for POWER. */

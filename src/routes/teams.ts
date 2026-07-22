@@ -90,7 +90,7 @@ export function registerTeamRoutes(router: Router) {
         stretchName: c.stretchName,
         awaiting: c.fileNote?.status === "Draft" ? "File note approval" : "Budget approval",
       }));
-    const modernisationProposals = [...store.outlets.values()]
+    const modernisationProposals = store.visibleOutlets()
       .flatMap((o) => o.modernisationRequests.filter((r) => !r.soDecision).map((r) => ({ outlet: o, request: r })))
       .map(({ outlet, request }) => ({
         outletId: outlet.id,

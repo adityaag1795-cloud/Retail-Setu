@@ -253,6 +253,29 @@ export function slabTrendNarrative(outletId: string): string[] {
   return lines;
 }
 
+/**
+ * Real DU uptime for an outlet: the % of calendar days within the transaction log's own on-file
+ * window (its first to last recorded date) that actually have at least one transaction — every
+ * zero-transaction day within that window is a real gap (see transactionLogGaps), not an
+ * estimate. Returns null when there's no transaction log at all, rather than a fabricated 100%.
+ */
+export function duUptimeSummary(
+  outletId: string,
+): { uptimePct: number; daysOnFile: number; totalDays: number; gaps: { startDate: string; endDate: string; days: number }[] } | null {
+  const rows = trafficForOutlet(outletId);
+  if (rows.length === 0) return null;
+  const minDate = rows[0]!.date;
+  const maxDate = rows[rows.length - 1]!.date;
+  const totalDays = Math.round((new Date(maxDate + "T00:00:00Z").getTime() - new Date(minDate + "T00:00:00Z").getTime()) / 86400000) + 1;
+  const gaps = transactionLogGaps(outletId);
+  return {
+    uptimePct: Math.round((rows.length / totalDays) * 1000) / 10,
+    daysOnFile: rows.length,
+    totalDays,
+    gaps,
+  };
+}
+
 export function nozzleStatusForOutlet(outletId: string): NozzleActivity[] {
   return store.nozzleActivity.filter((n) => n.outletId === outletId);
 }

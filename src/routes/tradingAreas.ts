@@ -27,7 +27,8 @@ export function registerTradingAreaRoutes(router: Router) {
       : null;
 
     const dealerByOutletId = new Map(snapshot.dealers.filter((d) => d.outletId).map((d) => [d.outletId!, d]));
-    const outlets = [...store.outlets.values()]
+    const outlets = store
+      .visibleOutlets()
       .filter((o) => o.tradingAreaId === snapshot.id)
       .map((o) => ({ ...o, tmfVolumeKL: dealerByOutletId.get(o.id)?.tmfVolumeKL }))
       // Only outlets with a real reported volume that is actually below the average — an outlet

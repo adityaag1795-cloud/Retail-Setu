@@ -407,6 +407,9 @@ async function renderOutletDetail(id) {
       <h3>Product-wise LY vs CY comparison <span class="muted">(real DSR data — last FY vs current FY to date)</span></h3>
       ${renderProductComparisonSection(o.productComparison)}
 
+      <h3>Power vs MS trend <span class="muted">(real monthly DSR data)</span></h3>
+      ${renderPowerVsMsSection(o.productComparison, report.traffic)}
+
       ${report.linkedCase
         ? `<h3>Linked Dealer Case (Module 2)</h3><p><a href="#/cases/${report.linkedCase.id}">${report.linkedCase.id}</a> — stage: ${escapeHtml(report.linkedCase.stage)}</p>`
         : ""}
@@ -640,6 +643,53 @@ function renderProductComparisonSection(pc) {
       </table>`;
     }).filter(Boolean);
     return tables.join("") || `<p class="muted">No real DSR product-comparison data on file for this outlet.</p>`;
+}
+/**
+ * Power (units) and MS (KL) are different measurement bases, so plotting their raw figures on one
+ * shared axis would squash whichever has the smaller number — the chart below indexes each series
+ * to its own real average (100 = that product's own average over the months on file) purely to
+ * compare the shape of the trend; the real, un-indexed monthly figures are in the table underneath
+ * so nothing is hidden behind the index. Peak-hour is real where a transaction log exists, but the
+ * log only records total transactions per hour, not broken down by product — so it can't be
+ * Power-specific, and the text says so rather than implying it is.
+ */
+function renderPowerVsMsSection(pc, traffic) {
+    if (!pc?.ms || !pc?.power || (!pc.ms.ly.length && !pc.ms.cy.length) || (!pc.power.ly.length && !pc.power.cy.length)) {
+        return `<p class="muted">No real DSR data on file for both MS and Power at this outlet, so no trend comparison is possible.</p>`;
+    }
+    const msSeries = [...pc.ms.ly, ...pc.ms.cy];
+    const powerSeries = [...pc.power.ly, ...pc.power.cy];
+    const n = Math.max(msSeries.length, powerSeries.length);
+    const labels = [];
+    const msValues = [];
+    const powerValues = [];
+    for (let i = 0; i < n; i++) {
+        labels.push(monthShortLabel(msSeries[i]?.month ?? powerSeries[i]?.month ?? ""));
+        msValues.push(msSeries[i]?.value ?? null);
+        powerValues.push(powerSeries[i]?.value ?? null);
+    }
+    const avg = (vals) => {
+        const real = vals.filter((v) => v != null && v > 0);
+        return real.length ? real.reduce((a, b) => a + b, 0) / real.length : null;
+    };
+    const msAvg = avg(msValues);
+    const powerAvg = avg(powerValues);
+    const index = (vals, base) => vals.map((v) => (v == null || base == null ? null : (v / base) * 100));
+    const peakHourNote = traffic?.peakHour
+        ? `Overall transaction peak hour (real DU log, all products combined — the log records total transactions per hour, not broken down by product, so this is not Power-specific): <strong>${traffic.peakHour.hour}:00-${traffic.peakHour.hour + 1}:00</strong>.`
+        : `No real DU transaction log on file for this outlet, so no real peak-hour figure — Power-specific or otherwise — is available.`;
+    return `
+    ${renderLineChartSVG(labels, [
+        { name: "MS (indexed, avg=100)", color: "#0057a8", values: index(msValues, msAvg) },
+        { name: "Power (indexed, avg=100)", color: "#eb6834", values: index(powerValues, powerAvg) },
+    ])}
+    <p class="muted">Indexed to each product's own real average over the months on file (100 = that product's average) — MS is measured in KL and Power in units, so raw figures aren't on a shared scale; see the real monthly figures below.</p>
+    <table class="table">
+      <thead><tr><th>Month</th><th>MS (KL)</th><th>Power (units)</th></tr></thead>
+      <tbody>${labels.map((l, i) => `<tr><td>${l}</td><td>${msValues[i] != null ? msValues[i].toFixed(2) : "-"}</td><td>${powerValues[i] != null ? powerValues[i].toFixed(2) : "-"}</td></tr>`).join("")}</tbody>
+    </table>
+    <p class="muted">${peakHourNote}</p>
+  `;
 }
 function renderActionPointsSection(actionPoints) {
     if (!actionPoints.length)
@@ -2014,10 +2064,11 @@ function wireCaseHandlers(c) {
 // Module 3 — Predictive Analysis
 // ---------------------------------------------------------------------------
 async function renderAnalytics(salesSummaryOutletId) {
-    const [summary, outlets, salesSummary] = await Promise.all([
+    const [summary, outlets, salesSummary, growth] = await Promise.all([
         api.get("/analytics/summary"),
         api.get("/outlets"),
         api.get(`/analytics/sales-area-summary${salesSummaryOutletId ? `?outletId=${salesSummaryOutletId}` : ""}`),
+        api.get("/analytics/growth"),
     ]);
     app().innerHTML = `
     <section class="panel">
@@ -2032,6 +2083,8 @@ async function renderAnalytics(salesSummaryOutletId) {
         </select>
       </label>
       ${renderSalesAreaSummarySection(salesSummary)}
+
+      ${renderGrowthAnalysisSection(growth)}
 
       <div class="grid-cards">
         <div class="card"><h3>Below TA average</h3><p class="big">${summary.belowTA.length}</p><ul>${summary.belowTA.map((x) => `<li>${escapeHtml(x.name)}: ${x.actualKL} / ${x.taAverageKL} KL</li>`).join("")}</ul></div>
@@ -2102,6 +2155,56 @@ function renderSalesAreaSummarySection(rows) {
         .join("")}
       </tbody>
     </table>`;
+}
+function growthBadge(g) {
+    if (g.direction === "no-data")
+        return `<span class="muted">No CY data</span>`;
+    const sign = g.growthPct >= 0 ? "+" : "";
+    const cls = g.direction === "up" ? "text--up" : g.direction === "down" ? "text--down" : "muted";
+    return `<span class="${cls}">${sign}${g.growthPct}%</span>`;
+}
+/**
+ * Per-outlet MS/HSD/Power growth or degrowth (latest real month vs the same month last year),
+ * paired with the real DU transaction-log slab-mix trend and uptime signal where a transaction
+ * log exists for that outlet — the two use different time windows (YoY vs the log's own Feb-2026
+ * onward history), so the slab trend is a real, suggestive signal for "why", not a rigorous
+ * decomposition of the YoY number; the text says so rather than overclaiming.
+ */
+function renderGrowthAnalysisSection(growth) {
+    const { caveat, reports } = growth;
+    if (!reports.length)
+        return "";
+    return `
+    <h3>Outlet volume growth / degrowth — MS, HSD, Power <span class="muted">(latest month on file vs the same month last year)</span></h3>
+    <p class="panel--error">⚠ ${escapeHtml(caveat)}</p>
+    ${reports
+        .map((g) => `
+      <div class="card">
+        <h3><a href="#/outlets/${g.outletId}">${escapeHtml(g.outletName)}</a></h3>
+        <table class="table">
+          <thead><tr><th>Product</th><th>Month</th><th>LY (target)</th><th>CY (achieved)</th><th>Growth</th></tr></thead>
+          <tbody>${g.products
+        .map((p) => `<tr>
+            <td>${escapeHtml(p.product)}</td>
+            <td>${escapeHtml(p.month)}</td>
+            <td>${p.target.toFixed(2)} ${escapeHtml(p.unit)}</td>
+            <td>${p.achieved != null ? `${p.achieved.toFixed(2)} ${escapeHtml(p.unit)}` : "No CY data"}</td>
+            <td>${growthBadge(p)}</td>
+          </tr>`)
+        .join("")}</tbody>
+        </table>
+        <p class="muted"><strong>Why (real transaction-slab trend):</strong>${g.hasTransactionLog
+        ? ""
+        : ` ${escapeHtml(g.slabNarrative[0])}`}</p>
+        ${g.hasTransactionLog ? `<ul>${g.slabNarrative.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>` : ""}
+        <p class="muted"><strong>DU uptime:</strong> ${g.duUptime
+        ? `${g.duUptime.uptimePct}% (${g.duUptime.daysOnFile}/${g.duUptime.totalDays} days on file)${g.duUptime.gaps.length
+            ? " — gaps: " + g.duUptime.gaps.map((gap) => `${gap.startDate} to ${gap.endDate} (${gap.days}d)`).join(", ")
+            : ""}`
+        : "No DU transaction log on file for this outlet."}${g.inactiveNozzleCount > 0 ? ` · ⚠ ${g.inactiveNozzleCount} nozzle(s) currently look inactive.` : ""}</p>
+      </div>`)
+        .join("")}
+  `;
 }
 // ---------------------------------------------------------------------------
 // Module 4 — Teams Communication

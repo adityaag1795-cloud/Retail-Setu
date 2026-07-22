@@ -50,7 +50,7 @@ function fiscalIndex(monthKey: string): number {
 
 /** outletId scopes to one outlet; omit for the whole set of outlets carrying real DSR data. */
 export function kpiTracker(outletId?: string): KpiProductSummary[] {
-  const outlets = outletId ? [store.outlets.get(outletId)].filter((o): o is NonNullable<typeof o> => !!o) : [...store.outlets.values()];
+  const outlets = outletId ? [store.outlets.get(outletId)].filter((o): o is NonNullable<typeof o> => !!o) : store.visibleOutlets();
 
   // The real CY months reached so far, in fiscal order — derived from whichever products actually
   // have CY data, so a product with none (Power) can still be reported against the same months.

@@ -69,6 +69,8 @@ body {
   padding: 24px;
 }
 .panel--error { color: var(--danger); }
+.text--up { color: var(--accent-2); font-weight: 600; }
+.text--down { color: var(--danger); font-weight: 600; }
 
 h2 { margin-top: 0; }
 h3 { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 16px; }

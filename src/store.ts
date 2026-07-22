@@ -107,6 +107,11 @@ class Store {
     tasks.forEach((t) => this.tasks.set(t.id, t));
   }
 
+  /** Outlets curated into the prototype's demo set — every "list all outlets" surface should use this, not the raw map, so hidden outlets stay reachable by direct ID (e.g. a Module 2 case link) without appearing in any listing. */
+  visibleOutlets(): Outlet[] {
+    return [...this.outlets.values()].filter((o) => !o.hiddenInPrototype);
+  }
+
   logActivity(dealerCase: DealerCase, actor: string, action: string, details?: string) {
     const entry: ActivityEntry = {
       id: nextId("ACT"),

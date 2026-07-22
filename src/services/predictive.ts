@@ -50,7 +50,7 @@ export function lowStockProducts(outlet: Outlet, thresholdPct = 15): { product: 
 
 /** Outlets with any product currently below `thresholdPct` of tank capacity, per the real stock feed. */
 export function outletsLowOnStock(thresholdPct = 15): { outlet: Outlet; products: { product: string; pct: number; stockQtyLtr: number; capacityLtr: number }[] }[] {
-  return [...store.outlets.values()]
+  return store.visibleOutlets()
     .filter((o) => o.status === "Operational")
     .map((o) => ({ outlet: o, products: lowStockProducts(o, thresholdPct) }))
     .filter((x) => x.products.length > 0);
@@ -71,18 +71,18 @@ export function dryDayCount(outletId: string, days = LOOKBACK_DAYS): number {
 }
 
 export function outletsBelowTA(): { outlet: Outlet; actualKL: number; taAverageKL: number }[] {
-  return [...store.outlets.values()]
+  return store.visibleOutlets()
     .filter((o) => o.status === "Operational")
     .map((o) => ({ outlet: o, actualKL: monthlyKL(o.id), taAverageKL: o.taAverageKL }))
     .filter((x) => x.actualKL < x.taAverageKL);
 }
 
 export function dryOutletsToday(): Outlet[] {
-  return [...store.outlets.values()].filter((o) => o.status === "Operational" && isDryToday(o));
+  return store.visibleOutlets().filter((o) => o.status === "Operational" && isDryToday(o));
 }
 
 export function highMsLowHsdOutlets(msThresholdKL = 100, hsdThresholdKL = 10): { outlet: Outlet; msKL: number; hsdKL: number }[] {
-  return [...store.outlets.values()]
+  return store.visibleOutlets()
     .filter((o) => o.status === "Operational")
     .map((o) => {
       const recs = recentRecords(o.id, 30);
@@ -94,7 +94,7 @@ export function highMsLowHsdOutlets(msThresholdKL = 100, hsdThresholdKL = 10): {
 }
 
 export function frequentLowStock(minDryDays = 3): { outlet: Outlet; dryDays: number }[] {
-  return [...store.outlets.values()]
+  return store.visibleOutlets()
     .filter((o) => o.status === "Operational")
     .map((o) => ({ outlet: o, dryDays: dryDayCount(o.id) }))
     .filter((x) => x.dryDays >= minDryDays);
@@ -181,7 +181,7 @@ export function syncPredictiveAlerts(): void {
 function matchOutletInText(text: string): Outlet | undefined {
   const lower = text.toLowerCase();
   let best: Outlet | undefined;
-  for (const outlet of store.outlets.values()) {
+  for (const outlet of store.visibleOutlets()) {
     if (lower.includes(outlet.name.toLowerCase())) {
       if (!best || outlet.name.length > best.name.length) best = outlet;
     }
@@ -204,7 +204,7 @@ export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
     } else if (mentionedOutlet) {
       resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't determine peak hours. Upload one via the Input Tap on the Outlet Repository page.`;
     } else {
-      const withData = [...store.outlets.values()].filter((o) => hasTrafficData(o.id));
+      const withData = store.visibleOutlets().filter((o) => hasTrafficData(o.id));
       resultSummary = withData.length
         ? `Peak-hour analysis is available for: ${withData.map((o) => o.name).join(", ")}. Ask "peak hour at <outlet name>".`
         : `No outlet has DU transaction data uploaded yet — nothing to compute peak hours from.`;
@@ -233,7 +233,7 @@ export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
     } else if (mentionedOutlet) {
       resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't show a traffic pattern. Upload one via the Input Tap.`;
     } else {
-      const withData = [...store.outlets.values()].filter((o) => hasTrafficData(o.id));
+      const withData = store.visibleOutlets().filter((o) => hasTrafficData(o.id));
       resultSummary = withData.length
         ? `Traffic-pattern data is available for: ${withData.map((o) => o.name).join(", ")}. Ask "traffic pattern at <outlet name>".`
         : `No outlet has DU transaction data uploaded yet.`;

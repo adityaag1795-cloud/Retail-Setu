@@ -18,6 +18,7 @@ import {
   slabTrendNarrative,
 } from "../services/trafficAnalytics.js";
 import { analyseAndApplyOutletInput, outletDataNotesFor, OutletInputError } from "../services/outletInput.js";
+import { outletGrowthReport, PARTIAL_MONTH_CAVEAT } from "../services/growthAnalysis.js";
 import type { ActionPoint } from "../types.js";
 
 function outletOrThrow(id: string) {
@@ -91,6 +92,8 @@ export function registerOutletRoutes(router: Router) {
       tradingArea: tradingArea ? { id: tradingArea.id, name: tradingArea.name } : undefined,
       actionPoints,
       traffic,
+      growth: outletGrowthReport(outlet),
+      growthCaveat: PARTIAL_MONTH_CAVEAT,
     });
   });
 

@@ -410,6 +410,9 @@ async function renderOutletDetail(id) {
       <h3>Power vs MS trend <span class="muted">(real monthly DSR data)</span></h3>
       ${renderPowerVsMsSection(o.productComparison, report.traffic)}
 
+      <h3>Volume growth / degrowth — MS, HSD, Power <span class="muted">(latest month on file vs the same month last year)</span></h3>
+      ${renderGrowthAnalysisSection(report.growth, report.growthCaveat)}
+
       ${report.linkedCase
         ? `<h3>Linked Dealer Case (Module 2)</h3><p><a href="#/cases/${report.linkedCase.id}">${report.linkedCase.id}</a> — stage: ${escapeHtml(report.linkedCase.stage)}</p>`
         : ""}
@@ -2064,11 +2067,10 @@ function wireCaseHandlers(c) {
 // Module 3 — Predictive Analysis
 // ---------------------------------------------------------------------------
 async function renderAnalytics(salesSummaryOutletId) {
-    const [summary, outlets, salesSummary, growth] = await Promise.all([
+    const [summary, outlets, salesSummary] = await Promise.all([
         api.get("/analytics/summary"),
         api.get("/outlets"),
         api.get(`/analytics/sales-area-summary${salesSummaryOutletId ? `?outletId=${salesSummaryOutletId}` : ""}`),
-        api.get("/analytics/growth"),
     ]);
     app().innerHTML = `
     <section class="panel">
@@ -2083,8 +2085,6 @@ async function renderAnalytics(salesSummaryOutletId) {
         </select>
       </label>
       ${renderSalesAreaSummarySection(salesSummary)}
-
-      ${renderGrowthAnalysisSection(growth)}
 
       <div class="grid-cards">
         <div class="card"><h3>Below TA average</h3><p class="big">${summary.belowTA.length}</p><ul>${summary.belowTA.map((x) => `<li>${escapeHtml(x.name)}: ${x.actualKL} / ${x.taAverageKL} KL</li>`).join("")}</ul></div>
@@ -2170,40 +2170,28 @@ function growthBadge(g) {
  * onward history), so the slab trend is a real, suggestive signal for "why", not a rigorous
  * decomposition of the YoY number; the text says so rather than overclaiming.
  */
-function renderGrowthAnalysisSection(growth) {
-    const { caveat, reports } = growth;
-    if (!reports.length)
-        return "";
+function renderGrowthAnalysisSection(g, caveat) {
+    if (!g)
+        return `<p class="muted">No real DSR product-comparison data on file for this outlet.</p>`;
     return `
-    <h3>Outlet volume growth / degrowth — MS, HSD, Power <span class="muted">(latest month on file vs the same month last year)</span></h3>
     <p class="panel--error">⚠ ${escapeHtml(caveat)}</p>
-    ${reports
-        .map((g) => `
-      <div class="card">
-        <h3><a href="#/outlets/${g.outletId}">${escapeHtml(g.outletName)}</a></h3>
-        <table class="table">
-          <thead><tr><th>Product</th><th>Month</th><th>LY (target)</th><th>CY (achieved)</th><th>Growth</th></tr></thead>
-          <tbody>${g.products
+    <table class="table">
+      <thead><tr><th>Product</th><th>Month</th><th>LY (target)</th><th>CY (achieved)</th><th>Growth</th></tr></thead>
+      <tbody>${g.products
         .map((p) => `<tr>
-            <td>${escapeHtml(p.product)}</td>
-            <td>${escapeHtml(p.month)}</td>
-            <td>${p.target.toFixed(2)} ${escapeHtml(p.unit)}</td>
-            <td>${p.achieved != null ? `${p.achieved.toFixed(2)} ${escapeHtml(p.unit)}` : "No CY data"}</td>
-            <td>${growthBadge(p)}</td>
-          </tr>`)
+        <td>${escapeHtml(p.product)}</td>
+        <td>${escapeHtml(p.month)}</td>
+        <td>${p.target.toFixed(2)} ${escapeHtml(p.unit)}</td>
+        <td>${p.achieved != null ? `${p.achieved.toFixed(2)} ${escapeHtml(p.unit)}` : "No CY data"}</td>
+        <td>${growthBadge(p)}</td>
+      </tr>`)
         .join("")}</tbody>
-        </table>
-        <p class="muted"><strong>Why (real transaction-slab trend):</strong>${g.hasTransactionLog
-        ? ""
-        : ` ${escapeHtml(g.slabNarrative[0])}`}</p>
-        ${g.hasTransactionLog ? `<ul>${g.slabNarrative.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>` : ""}
-        <p class="muted"><strong>DU uptime:</strong> ${g.duUptime
-        ? `${g.duUptime.uptimePct}% (${g.duUptime.daysOnFile}/${g.duUptime.totalDays} days on file)${g.duUptime.gaps.length
-            ? " — gaps: " + g.duUptime.gaps.map((gap) => `${gap.startDate} to ${gap.endDate} (${gap.days}d)`).join(", ")
-            : ""}`
+    </table>
+    <p class="muted"><strong>Why (real transaction-slab trend):</strong>${g.hasTransactionLog ? "" : ` ${escapeHtml(g.slabNarrative[0])}`}</p>
+    ${g.hasTransactionLog ? `<ul>${g.slabNarrative.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>` : ""}
+    <p class="muted"><strong>DU uptime:</strong> ${g.duUptime
+        ? `${g.duUptime.uptimePct}% (${g.duUptime.daysOnFile}/${g.duUptime.totalDays} days on file)${g.duUptime.gaps.length ? " — gaps: " + g.duUptime.gaps.map((gap) => `${gap.startDate} to ${gap.endDate} (${gap.days}d)`).join(", ") : ""}`
         : "No DU transaction log on file for this outlet."}${g.inactiveNozzleCount > 0 ? ` · ⚠ ${g.inactiveNozzleCount} nozzle(s) currently look inactive.` : ""}</p>
-      </div>`)
-        .join("")}
   `;
 }
 // ---------------------------------------------------------------------------

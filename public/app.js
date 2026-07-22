@@ -2377,12 +2377,15 @@ function renderKpiTrackerSection(kpi) {
 // Module 5 — SO Cockpit
 // ---------------------------------------------------------------------------
 async function renderCockpit() {
-    const snap = await api.get("/cockpit");
+    const [snap, energy] = await Promise.all([api.get("/cockpit"), api.get("/cockpit/energy-briefing")]);
     const q = snap.quadrants;
     app().innerHTML = `
     <section class="panel">
       <h2>SO Cockpit</h2>
       <p class="muted">Guiding module — tasks from Modules 1-4, divided into four quadrants (7 Habits time-management matrix), plus a circuit-wise pending calendar.</p>
+
+      <h3>Energy sector news &amp; crude rate <span class="muted">(live, re-fetched on every refresh)</span></h3>
+      <div id="energy-briefing">${renderEnergyBriefing(energy)}</div>
 
       <div class="grid-quadrants">
         ${["DoFirst", "Schedule", "Delegate", "Eliminate"]
@@ -2416,6 +2419,53 @@ async function renderCockpit() {
         const date = e.target.value;
         const filtered = date ? snap.completedLog.filter((g) => g.date === date) : snap.completedLog;
         qs("#completed-log").innerHTML = renderCompletedLog(filtered);
+    });
+    wireEnergyBriefingForm();
+}
+/**
+ * Live crude rate (Stooq WTI) + energy news (Google News RSS), re-fetched by the server on every
+ * load of this page — either can fail for reasons outside this app's control (network policy, the
+ * source changing format), in which case the SO's own manual entry for today is shown instead, or
+ * a plain "unavailable" message plus the entry form if there's no manual entry either. Never a
+ * fabricated price/headline in any path.
+ */
+function renderEnergyBriefing(energy) {
+    const crudeLine = energy.crude.ok
+        ? `<strong>${energy.crude.priceUsd.toFixed(2)} USD/bbl</strong> — ${escapeHtml(energy.crude.symbol)} <span class="muted">(live, ${escapeHtml(energy.crude.source)}, as of ${escapeHtml(energy.crude.asOf)})</span>`
+        : energy.manualToday?.crudeRateUsdPerBbl != null
+            ? `<strong>${energy.manualToday.crudeRateUsdPerBbl.toFixed(2)} USD/bbl</strong> <span class="muted">(entered manually today, live fetch unavailable: ${escapeHtml(energy.crude.error)})</span>`
+            : `<span class="muted">Live crude-rate fetch unavailable (${escapeHtml(energy.crude.error)}) — no manual entry for today yet.</span>`;
+    const newsBlock = energy.news.ok
+        ? `<ul>${energy.news.headlines.map((h) => `<li>${h.link ? `<a href="${escapeHtml(h.link)}" target="_blank" rel="noopener">${escapeHtml(h.title)}</a>` : escapeHtml(h.title)}</li>`).join("")}</ul><p class="muted">Live, ${escapeHtml(energy.news.source)}</p>`
+        : energy.manualToday?.notes
+            ? `<div class="ai-output">${escapeHtml(energy.manualToday.notes)}</div><p class="muted">Entered manually today — live fetch unavailable: ${escapeHtml(energy.news.error)}</p>`
+            : `<p class="muted">Live energy-news fetch unavailable (${escapeHtml(energy.news.error)}) — no manual entry for today yet.</p>`;
+    return `
+    <div class="card">
+      <p>${crudeLine}</p>
+      ${newsBlock}
+      <details>
+        <summary class="muted">Add/update today's figures manually</summary>
+        <form id="energy-manual-form" class="form">
+          <label>Crude rate (USD/bbl) <input name="crudeRateUsdPerBbl" type="number" step="0.01" /></label>
+          <label>Notes / headlines (real, from what you've read today) <textarea name="notes" placeholder="e.g. Brent settled at $82.10; OPEC+ holds output steady..."></textarea></label>
+          <button type="submit" class="btn btn--sm">Save</button>
+        </form>
+      </details>
+    </div>`;
+}
+function wireEnergyBriefingForm() {
+    qs("#energy-manual-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const data = formToObject(e.target);
+        await api.post("/cockpit/energy-briefing", {
+            crudeRateUsdPerBbl: data["crudeRateUsdPerBbl"] ? Number(data["crudeRateUsdPerBbl"]) : undefined,
+            notes: data["notes"] ?? "",
+        });
+        toast("Saved");
+        const energy = await api.get("/cockpit/energy-briefing");
+        qs("#energy-briefing").innerHTML = renderEnergyBriefing(energy);
+        wireEnergyBriefingForm();
     });
 }
 function renderCompletedLog(groups) {

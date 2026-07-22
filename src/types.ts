@@ -139,6 +139,23 @@ export interface ActionPoint {
   completedAt?: string;
 }
 
+/** A real crude-oil quote fetched live from a public source, or an explicit failure — never a fabricated number. */
+export type CrudeRateResult =
+  | { ok: true; symbol: string; priceUsd: number; asOf: string; source: string }
+  | { ok: false; error: string };
+
+/** A real energy-sector headline fetched live from a public news source, or an explicit failure. */
+export type EnergyNewsResult = { ok: true; headlines: { title: string; link: string }[]; source: string } | { ok: false; error: string };
+
+/** SO's manual fallback entry for the day's crude rate / energy news, used when the live fetch fails or is unavailable. */
+export interface EnergyManualEntry {
+  id: ID;
+  date: string; // "YYYY-MM-DD"
+  crudeRateUsdPerBbl?: number;
+  notes: string; // free-form real headlines/summary the SO pasted in
+  postedAt: string;
+}
+
 /**
  * A free-form "keep feeding me data" input against an outlet — the SO pastes whatever update
  * they have (one fact per line) rather than waiting for a code change. Lines matching a known

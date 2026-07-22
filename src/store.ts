@@ -18,6 +18,7 @@ import type {
   ActionPoint,
   TradingAreaSnapshot,
   OutletDataNote,
+  EnergyManualEntry,
 } from "./types.js";
 import {
   seedOutlets,
@@ -68,6 +69,8 @@ class Store {
   actionPoints = new Map<string, ActionPoint>();
   tradingAreas = new Map<string, TradingAreaSnapshot>();
   outletDataNotes = new Map<string, OutletDataNote>();
+  /** SO's manual fallback entries for the daily energy-news/crude-rate cockpit column — used when the live fetch fails. */
+  energyManualEntries: EnergyManualEntry[] = [];
 
   constructor() {
     seedOutlets.forEach((o) => this.outlets.set(o.id, o));

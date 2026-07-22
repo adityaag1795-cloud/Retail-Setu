@@ -43,9 +43,14 @@ export function circuitCalendar(): CalendarEvent[] {
   const events: CalendarEvent[] = [];
   for (const c of store.dealerCases.values()) {
     const town = c.stretchName;
-    if (!c.inspections.asc) events.push(mkEvent(c.id, town, c.salesArea, "ASC", `ASC pending — ${c.stretchName}`));
-    if (!c.inspections.lec) events.push(mkEvent(c.id, town, c.salesArea, "LEC", `LEC pending — ${c.stretchName}`));
-    if (!c.inspections.fvc) events.push(mkEvent(c.id, town, c.salesArea, "FVC", `FVC pending — ${c.stretchName}`));
+    // ASC/LEC/FVC evaluate a NEW site's suitability — only real for a NewSiteDevelopment case.
+    // A Resitement case is for an already-commissioned outlet, so there's no real site to
+    // scrutinise and no genuine "pending" inspection to chase here.
+    if (c.caseType === "NewSiteDevelopment") {
+      if (!c.inspections.asc) events.push(mkEvent(c.id, town, c.salesArea, "ASC", `ASC pending — ${c.stretchName}`));
+      if (!c.inspections.lec) events.push(mkEvent(c.id, town, c.salesArea, "LEC", `LEC pending — ${c.stretchName}`));
+      if (!c.inspections.fvc) events.push(mkEvent(c.id, town, c.salesArea, "FVC", `FVC pending — ${c.stretchName}`));
+    }
     for (const m of c.milestones) {
       if (m.status === "Pending" || m.status === "Stuck") {
         events.push(mkEvent(c.id, town, c.salesArea, "NOC-Followup", `${m.label} — ${c.stretchName}`));

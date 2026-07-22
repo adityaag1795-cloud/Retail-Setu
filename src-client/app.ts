@@ -1347,11 +1347,16 @@ async function renderCaseDetail(id: string) {
 
   // Inspections — real DSG Annexure V (ASC) / W1 (LEC) / Y (FVC) formats. All fields already
   // captured on the Application Form above are auto-populated server-side; only the committee's
-  // own Yes/No findings are entered here.
+  // own Yes/No findings are entered here. ASC/LEC/FVC evaluate a NEW site's suitability — a
+  // Resitement case is for an already-commissioned outlet, so there's no real site to scrutinise.
   sections.push(`<h3>Site clearances (ASC / LEC / FVC)</h3>`);
-  sections.push(renderAscBlock(c));
-  sections.push(renderLecBlock(c));
-  sections.push(renderFvcBlock(c));
+  if (c.caseType === "NewSiteDevelopment") {
+    sections.push(renderAscBlock(c));
+    sections.push(renderLecBlock(c));
+    sections.push(renderFvcBlock(c));
+  } else {
+    sections.push(`<p class="muted">Not applicable — ASC/LEC/FVC evaluate a new site's suitability; this is a Resitement case for an already-commissioned outlet.</p>`);
+  }
 
   // File note for LOI — real HPCL "Approved File Note" routing-chain format, matched to a
   // real sample file note (advertisement/location details, selection narrative, ASC confirmation,

@@ -774,7 +774,8 @@ async function renderTradingAreaDetail(id: string) {
       <h2>${escapeHtml(area.name)}</h2>
       <p class="muted">${escapeHtml(area.month)} snapshot &middot; real HPCL Market Share report, dealer-wise MS/HSD/TMF</p>
 
-      <h3>Our outlets in this trading area</h3>
+      <h3>Our outlets below this trading area's average volume</h3>
+      <p class="muted">Average TMF (MS+HSD) across the ${escapeHtml(area.month)} report's dealers with a figure on file: ${fmtKL(area.averageTmfVolumeKL)} KL. Only our own outlets reporting below that average are listed here — the ones an SO needs to act on, not the full roster.</p>
       <div class="grid-cards">
         ${area.outlets
           .map(
@@ -782,9 +783,10 @@ async function renderTradingAreaDetail(id: string) {
           <h3>${escapeHtml(o.name)}</h3>
           <p>${escapeHtml(o.salesArea)} &middot; ${escapeHtml(o.status)}</p>
           <p class="muted">${escapeHtml(o.dealerName ?? "No dealer on record")}</p>
+          <p class="muted">TMF: ${fmtKL(o.tmfVolumeKL)} KL (area average ${fmtKL(area.averageTmfVolumeKL)} KL)</p>
         </a>`,
           )
-          .join("") || "<p class='muted'>No outlets of ours mapped to this trading area yet.</p>"}
+          .join("") || "<p class='muted'>None of our outlets here are below the trading area average (or no outlets of ours are mapped to it yet).</p>"}
       </div>
 
       <h3>Competitive dealer-wise market share (${escapeHtml(area.month)})</h3>

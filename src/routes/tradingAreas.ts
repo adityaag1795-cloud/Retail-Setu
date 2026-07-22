@@ -11,12 +11,30 @@ export function registerTradingAreaRoutes(router: Router) {
     );
   });
 
-  // One-page snapshot: the real competitive dealer-wise report + every one of our own outlets
-  // tagged with this trading area, together on one page.
+  // One-page snapshot: the real competitive dealer-wise report + only our own outlets that are
+  // underperforming this trading area's average TMF volume (see averageTmfVolumeKL below) —
+  // the outlets an SO actually needs to act on, not the full roster.
   router.get("/api/trading-areas/:id", (_req, res, params) => {
     const snapshot = store.tradingAreas.get(params["id"]!);
     if (!snapshot) throw new ApiError(404, `Trading area ${params["id"]} not found`);
-    const outlets = [...store.outlets.values()].filter((o) => o.tradingAreaId === snapshot.id);
-    sendJson(res, 200, { ...snapshot, outlets });
+
+    // Average over dealers with a real reported TMF volume only — a dealer with no figure on
+    // file (see TradingAreaDealerFigures) is left out of the average rather than counted as 0,
+    // which would silently drag the average down and misclassify genuine performers as "below".
+    const reportedVolumes = snapshot.dealers.map((d) => d.tmfVolumeKL).filter((v): v is number => v != null);
+    const averageTmfVolumeKL = reportedVolumes.length
+      ? reportedVolumes.reduce((sum, v) => sum + v, 0) / reportedVolumes.length
+      : null;
+
+    const dealerByOutletId = new Map(snapshot.dealers.filter((d) => d.outletId).map((d) => [d.outletId!, d]));
+    const outlets = [...store.outlets.values()]
+      .filter((o) => o.tradingAreaId === snapshot.id)
+      .map((o) => ({ ...o, tmfVolumeKL: dealerByOutletId.get(o.id)?.tmfVolumeKL }))
+      // Only outlets with a real reported volume that is actually below the average — an outlet
+      // with no figure on file can't be judged either way, so it's excluded rather than assumed
+      // underperforming.
+      .filter((o) => o.tmfVolumeKL != null && averageTmfVolumeKL != null && o.tmfVolumeKL < averageTmfVolumeKL);
+
+    sendJson(res, 200, { ...snapshot, averageTmfVolumeKL, outlets });
   });
 }

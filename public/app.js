@@ -2532,6 +2532,19 @@ function renderCompletedLog(groups) {
 // ---------------------------------------------------------------------------
 // Module 6 — Knowledge Centre
 // ---------------------------------------------------------------------------
+const HPCL_PORTAL_LINKS = [
+    { name: "IMS", url: "https://ims.hpcl.co.in/ims/login.jsp" },
+    { name: "CRIS", url: "https://cris.hpcl.co.in/" },
+    { name: "RIT", url: "https://rit.hpcl.co.in/rit/" },
+    { name: "SAP Launchpad (S4 Production)", url: "" },
+    { name: "Google DEMO link", url: "http://webapps4.hpcl.co.in/GoogleDemoExisting_1.3.6/login.jsp" },
+    { name: "Aarohan", url: "http://aarohan.hpcl.in/" },
+    { name: "ROSID Portal", url: "https://rosidmp.hpcl.co.in/rosidmp/create.jsp?" },
+    { name: "My HPCL Portal", url: "" },
+    { name: "TIBCO Spotfire (Retail Sales Dashboard)", url: "https://spotfire.hpcl.co.in/spotfire/ui/login?targetUrl=%2Fspotfire%2Fwp%2FOpenAnalysis%3Ffile%3D%2FReports%2FRetail%2520Dasboards%2FSalesDashboard-Retail" },
+    { name: "MDM Portal", url: "https://aarohanapps.hpcl.co.in/hpmdm/loginsuccess" },
+    { name: "Demand Forecast", url: "https://df.hpcl.co.in/SASVisualAnalytics/" },
+];
 async function renderKnowledge() {
     app().innerHTML = `
     <section class="panel">
@@ -2553,6 +2566,14 @@ async function renderKnowledge() {
         <label>Tags (comma-separated) <input name="tagsRaw" /></label>
         <button type="submit" class="btn">Add clause</button>
       </form>
+
+      <h3>HPCL Portals <span class="muted">(quick links to other internal systems — opens in a new tab)</span></h3>
+      <table class="table">
+        <thead><tr><th>Portal</th><th>Link</th></tr></thead>
+        <tbody>
+          ${HPCL_PORTAL_LINKS.map((p) => `<tr><td>${escapeHtml(p.name)}</td><td>${p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.url)}</a>` : '<span class="muted">URL not on file</span>'}</td></tr>`).join("")}
+        </tbody>
+      </table>
     </section>`;
     qs("#ask-policy-form").addEventListener("submit", async (e) => {
         e.preventDefault();

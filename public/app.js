@@ -2134,7 +2134,7 @@ async function renderAnalytics(salesSummaryOutletId) {
       ${renderSalesAreaSummarySection(salesSummary)}
 
       <div class="grid-cards">
-        <div class="card"><h3>Below TA average</h3><p class="big">${summary.belowTA.length}</p><ul>${summary.belowTA.map((x) => `<li>${escapeHtml(x.name)}: ${x.actualKL} / ${x.taAverageKL} KL</li>`).join("")}</ul></div>
+        <div class="card"><h3>Below trading area average <span class="muted">(real dealer-wise average)</span></h3><p class="big">${summary.belowTA.totalCount}</p><ul>${summary.belowTA.worst.map((x) => `<li>${escapeHtml(x.name)}: ${x.volumeKL} / ${x.tradingAreaAverageKL} KL (${x.pctOfAverage}%, ${escapeHtml(x.tradingAreaName)})</li>`).join("") || "<li class='muted'>None</li>"}</ul>${summary.belowTA.totalCount > summary.belowTA.worst.length ? `<p class="muted">Showing the ${summary.belowTA.worst.length} worst.</p>` : ""}</div>
         <div class="card"><h3>Dry today</h3><p class="big">${summary.dryToday.length}</p><ul>${summary.dryToday.map((x) => `<li>${escapeHtml(x.name)}</li>`).join("")}</ul></div>
         <div class="card"><h3>Low on tank stock now <span class="muted">(live SAP feed)</span></h3><p class="big">${summary.lowOnStockToday.length}</p><ul>${summary.lowOnStockToday.map((x) => `<li>${escapeHtml(x.name)}: ${x.products.map((p) => `${escapeHtml(p.product)} ${p.pct}%`).join(", ")}</li>`).join("") || "<li class='muted'>None</li>"}</ul></div>
         <div class="card"><h3>Frequently dry (60d)</h3><p class="big">${summary.frequentlyDry.length}</p><ul>${summary.frequentlyDry.map((x) => `<li>${escapeHtml(x.name)}: ${x.dryDays} days</li>`).join("")}</ul></div>
@@ -2143,7 +2143,7 @@ async function renderAnalytics(salesSummaryOutletId) {
 
       <h3>Ask the analytics dashboard</h3>
       <div class="form--inline">
-        <button class="btn btn--sm" data-q="How many outlets are doing below TA average?">Below TA average?</button>
+        <button class="btn btn--sm" data-q="How many outlets are doing below trading area average?">Below trading area average?</button>
         <button class="btn btn--sm" data-q="Which outlets are dry today?">Dry today?</button>
         <button class="btn btn--sm" data-q="Which outlets are low on tank stock right now?">Low on tank stock now?</button>
         <button class="btn btn--sm" data-q="Which outlets are selling more than 100 KL MS but less than 10 KL HSD?">MS/HSD skew?</button>

@@ -10,6 +10,7 @@ import {
   outletsWithInactiveNozzles,
   VEHICLE_TYPE_LABELS,
 } from "./trafficAnalytics.js";
+import { outletsBelowTradingAreaAverage } from "./tradingAreaAnalytics.js";
 import type { VehicleType } from "../types.js";
 
 const LOOKBACK_DAYS = 60;
@@ -70,11 +71,23 @@ export function dryDayCount(outletId: string, days = LOOKBACK_DAYS): number {
   return recentRecords(outletId, days).filter((r) => r.msKL === 0 && r.hsdKL === 0).length;
 }
 
-export function outletsBelowTA(): { outlet: Outlet; actualKL: number; taAverageKL: number }[] {
-  return store.visibleOutlets()
-    .filter((o) => o.status === "Operational")
-    .map((o) => ({ outlet: o, actualKL: monthlyKL(o.id), taAverageKL: o.taAverageKL }))
-    .filter((x) => x.actualKL < x.taAverageKL);
+/**
+ * Real outlets below their own trading area's real dealer-wise competitive average TMF volume —
+ * see tradingAreaAnalytics.ts. Deliberately every operational outlet with a real trading-area
+ * assignment, not just the prototype's curated/visible set (same reasoning as the Module 1 Trading
+ * Area page: a genuine underperformer shouldn't be suppressed just because it's outside the demo's
+ * curated 11). Sorted worst-first; callers cap this to a top-N for display where appropriate.
+ */
+export function outletsBelowTA(): { outlet: Outlet; volumeKL: number; tradingAreaAverageKL: number; tradingAreaName: string; pctOfAverage: number }[] {
+  return outletsBelowTradingAreaAverage()
+    .filter((r) => r.outlet.status === "Operational")
+    .map((r) => ({
+      outlet: r.outlet,
+      volumeKL: r.tmfVolumeKL,
+      tradingAreaAverageKL: r.tradingAreaAverageKL,
+      tradingAreaName: r.tradingAreaName,
+      pctOfAverage: r.pctOfAverage,
+    }));
 }
 
 export function dryOutletsToday(): Outlet[] {
@@ -101,10 +114,19 @@ export function frequentLowStock(minDryDays = 3): { outlet: Outlet; dryDays: num
 }
 
 export function dailySummary() {
+  const belowTARows = outletsBelowTA();
   return {
     generatedAt: new Date().toISOString(),
     source: "CRIS" as const,
-    belowTA: outletsBelowTA().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, actualKL: x.actualKL, taAverageKL: x.taAverageKL })),
+    // Real total count kept honest; only the displayed list is capped to the 3 worst (by how far
+    // below their trading area's real average) — the full list still drives Cockpit task creation
+    // in syncPredictiveAlerts below, this is just the summary card's readability limit.
+    belowTA: {
+      totalCount: belowTARows.length,
+      worst: belowTARows
+        .slice(0, 3)
+        .map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, volumeKL: x.volumeKL, tradingAreaAverageKL: x.tradingAreaAverageKL, tradingAreaName: x.tradingAreaName, pctOfAverage: x.pctOfAverage })),
+    },
     dryToday: dryOutletsToday().map((o) => ({ outletId: o.id, name: o.name })),
     frequentlyDry: frequentLowStock().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, dryDays: x.dryDays })),
     highMsLowHsd: highMsLowHsdOutlets().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, msKL: x.msKL, hsdKL: x.hsdKL })),
@@ -153,14 +175,14 @@ export function syncPredictiveAlerts(): void {
       createOutletTask(outlet, title, `${outlet.name} is dry today per the live stock/sales feed — check tanker scheduling.`, "High", true);
     }
   }
-  for (const { outlet, actualKL, taAverageKL } of outletsBelowTA()) {
-    if (taAverageKL <= 0 || actualKL >= taAverageKL * 0.8) continue; // only meaningfully below, not noise
-    const title = `Below TA average — ${outlet.name}`;
+  for (const { outlet, volumeKL, tradingAreaAverageKL, tradingAreaName, pctOfAverage } of outletsBelowTA()) {
+    if (pctOfAverage >= 80) continue; // only meaningfully below, not noise
+    const title = `Below trading area average — ${outlet.name}`;
     if (!hasOpenTask(outlet.id, title)) {
       createOutletTask(
         outlet,
         title,
-        `${outlet.name}: 30-day throughput ${actualKL} KL vs TA average ${taAverageKL} KL (${Math.round((actualKL / taAverageKL) * 100)}%) — investigate.`,
+        `${outlet.name}: ${volumeKL} KL vs ${tradingAreaName} average ${tradingAreaAverageKL} KL (${pctOfAverage}%) — investigate.`,
         "Medium",
         false,
       );
@@ -264,9 +286,10 @@ export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
   } else if (q.includes("below") && (q.includes("ta") || q.includes("trading area"))) {
     const rows = outletsBelowTA();
     matchedOutletIds = rows.map((r) => r.outlet.id);
+    const worst = rows.slice(0, 3);
     resultSummary = rows.length
-      ? `${rows.length} outlet(s) below TA average: ${rows.map((r) => `${r.outlet.name} (${r.actualKL} KL vs TA ${r.taAverageKL} KL)`).join("; ")}.`
-      : "No outlets currently below their TA average.";
+      ? `${rows.length} outlet(s) below their trading area's real average — worst ${worst.length}: ${worst.map((r) => `${r.outlet.name} (${r.volumeKL} KL vs ${r.tradingAreaName} average ${r.tradingAreaAverageKL} KL, ${r.pctOfAverage}%)`).join("; ")}.`
+      : "No outlets currently below their trading area's real average.";
   } else if (q.includes("dry")) {
     const rows = dryOutletsToday();
     matchedOutletIds = rows.map((o) => o.id);

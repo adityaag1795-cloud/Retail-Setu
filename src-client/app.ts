@@ -2859,6 +2859,7 @@ const HPCL_PORTAL_LINKS = [
   { name: "TIBCO Spotfire (Retail Sales Dashboard)", url: "https://spotfire.hpcl.co.in/spotfire/ui/login?targetUrl=%2Fspotfire%2Fwp%2FOpenAnalysis%3Ffile%3D%2FReports%2FRetail%2520Dasboards%2FSalesDashboard-Retail" },
   { name: "MDM Portal", url: "https://aarohanapps.hpcl.co.in/hpmdm/loginsuccess" },
   { name: "Demand Forecast", url: "https://df.hpcl.co.in/SASVisualAnalytics/" },
+  { name: "CRM", url: "https://rishte.hpcl.co.in" },
 ];
 
 async function renderKnowledge() {

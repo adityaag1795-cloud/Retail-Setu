@@ -406,7 +406,11 @@ function wireDataUploadInput(selector: string, endpoint: string) {
 }
 
 async function renderOutletDetail(id: string) {
-  const [report, dataNotes] = await Promise.all([api.get(`/outlets/${id}/report`), api.get(`/outlets/${id}/data-input`)]);
+  const [report, dataNotes, districtNews] = await Promise.all([
+    api.get(`/outlets/${id}/report`),
+    api.get(`/outlets/${id}/data-input`),
+    api.get(`/outlets/${id}/district-news`),
+  ]);
   const o = report.outlet;
   app().innerHTML = `
     <section class="panel">
@@ -419,6 +423,9 @@ async function renderOutletDetail(id: string) {
           : ""
       }
       <p><a class="btn" href="/api/outlets/${o.id}/report.pdf" target="_blank">⬇ Download one-pager PDF</a></p>
+
+      <h3>District news <span class="muted">(political movement &amp; new infrastructure development — ${escapeHtml(o.district)})</span></h3>
+      ${renderDistrictNewsSection(districtNews)}
 
       <h3>Master Sheet</h3>
       <table class="table">
@@ -2765,6 +2772,18 @@ function renderEnergyBriefing(energy: any): string {
         </form>
       </details>
     </div>`;
+}
+
+/**
+ * Module 1 outlet page — real local news for the outlet's own district (political movement, new
+ * infrastructure development), fetched live from Google News RSS (see districtNews.ts). Never a
+ * fabricated headline — no district on file, or a feed failure, shows an explicit message instead.
+ */
+function renderDistrictNewsSection(news: any): string {
+  if (news.ok) {
+    return `<ul>${news.headlines.map((h: any) => `<li>${h.link ? `<a href="${escapeHtml(h.link)}" target="_blank" rel="noopener">${escapeHtml(h.title)}</a>` : escapeHtml(h.title)}</li>`).join("")}</ul><p class="muted">Live, ${escapeHtml(news.source)}</p>`;
+  }
+  return `<p class="muted">Live district-news fetch unavailable (${escapeHtml(news.error)}).</p>`;
 }
 
 function wireEnergyBriefingForm() {

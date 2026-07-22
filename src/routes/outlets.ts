@@ -19,6 +19,7 @@ import {
 } from "../services/trafficAnalytics.js";
 import { analyseAndApplyOutletInput, outletDataNotesFor, OutletInputError } from "../services/outletInput.js";
 import { outletGrowthReport, PARTIAL_MONTH_CAVEAT } from "../services/growthAnalysis.js";
+import { fetchDistrictNews } from "../services/districtNews.js";
 import type { ActionPoint } from "../types.js";
 
 function outletOrThrow(id: string) {
@@ -95,6 +96,13 @@ export function registerOutletRoutes(router: Router) {
       growth: outletGrowthReport(outlet),
       growthCaveat: PARTIAL_MONTH_CAVEAT,
     });
+  });
+
+  // Separate from /report so a slow/blocked live news fetch never holds up the rest of the
+  // one-pager (same pattern as /api/cockpit/energy-briefing) — fetched in parallel client-side.
+  router.get("/api/outlets/:id/district-news", async (_req, res, params) => {
+    const outlet = outletOrThrow(params["id"]!);
+    sendJson(res, 200, await fetchDistrictNews(outlet.district));
   });
 
   router.get("/api/outlets/:id/report.pdf", (_req, res, params) => {

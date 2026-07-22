@@ -20,6 +20,7 @@ import type {
   OutletDataNote,
   EnergyManualEntry,
   OutletCriticalityMonitor,
+  ItpsTransactionDay,
 } from "./types.js";
 import {
   seedOutlets,
@@ -34,6 +35,7 @@ import {
 } from "./data/seed.js";
 import { SEED_DAILY_TRAFFIC, SEED_NOZZLE_ACTIVITY } from "./data/trafficData.js";
 import { SEED_OUTLET_CRITICALITY } from "./data/outletCriticalityData.js";
+import { SEED_ITPS_TRANSACTIONS } from "./data/itpsTransactionData.js";
 
 let counter = 10000;
 export function nextId(prefix: string): string {
@@ -76,6 +78,8 @@ class Store {
   energyManualEntries: EnergyManualEntry[] = [];
   /** Real per-outlet dry-risk/indent/funds status from HPCL's own Outlet Criticality Monitor workbook. */
   criticalityMonitor: OutletCriticalityMonitor[] = [];
+  /** Real day-wise ITPS (online) transaction counts from HPCL's own Online Transactions report. */
+  itpsTransactions: ItpsTransactionDay[] = [];
 
   constructor() {
     seedOutlets.forEach((o) => this.outlets.set(o.id, o));
@@ -83,6 +87,7 @@ class Store {
     this.salesRecords = [...seedSalesRecords];
     this.stockSnapshots = [...seedStockSnapshots];
     this.criticalityMonitor = [...SEED_OUTLET_CRITICALITY];
+    this.itpsTransactions = [...SEED_ITPS_TRANSACTIONS];
     this.dailyTraffic = [...SEED_DAILY_TRAFFIC];
     this.nozzleActivity = [...SEED_NOZZLE_ACTIVITY];
     seedTeam.forEach((t) => this.team.set(t.id, t));

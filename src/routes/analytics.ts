@@ -2,7 +2,7 @@ import type { Router } from "../httpUtil.js";
 import { sendJson, readJsonBody, ApiError } from "../httpUtil.js";
 import { dailySummary, askAnalytics, syncPredictiveAlerts } from "../services/predictive.js";
 import { salesAreaSummary } from "../services/kpiTracker.js";
-import { stockVsSalesInsights, suddenSalesMoves, dryRiskWithoutCover } from "../services/predictiveInsights.js";
+import { stockVsSalesInsights, suddenSalesMoves, dryRiskWithoutCover, itpsGrowthTrend, itpsInactiveOutlets } from "../services/predictiveInsights.js";
 import { PARTIAL_MONTH_CAVEAT } from "../services/growthAnalysis.js";
 
 const SUDDEN_MOVES_DISPLAY_LIMIT = 5;
@@ -23,6 +23,8 @@ export function registerAnalyticsRoutes(router: Router) {
       partialMonthCaveat: PARTIAL_MONTH_CAVEAT,
       stockVsSales: stockVsSalesInsights(),
       dryRiskWithoutCover: dryRiskWithoutCover(),
+      itpsGrowthTrend: itpsGrowthTrend(),
+      itpsInactiveOutlets: itpsInactiveOutlets(),
       suddenMoves: {
         totalCount: moves.length,
         up: up.slice(0, SUDDEN_MOVES_DISPLAY_LIMIT),

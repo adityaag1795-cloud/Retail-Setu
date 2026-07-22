@@ -853,6 +853,18 @@ export interface TankStock {
  * actually been placed and funds are available to cover it. Real data exists only for the outlets
  * present in that workbook; left absent elsewhere rather than guessed.
  */
+/**
+ * Real day-wise ITPS (online) transaction counts per outlet, from HPCL's own "Online Transactions"
+ * report — total plus per-terminal breakdown. Real data exists only for the outlets and days
+ * present in that report; left absent elsewhere rather than guessed.
+ */
+export interface ItpsTransactionDay {
+  outletId: ID;
+  date: string; // "YYYY-MM-DD"
+  total: number;
+  terminals: number[];
+}
+
 export interface OutletCriticalityMonitor {
   outletId: ID;
   dryMS: boolean;

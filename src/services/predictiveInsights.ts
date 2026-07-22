@@ -139,3 +139,72 @@ export function dryRiskWithoutCover(): DryRiskWithoutCoverRow[] {
   const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
   return rows.sort((a, b) => rank[a.criticality] - rank[b.criticality]);
 }
+
+const ITPS_TREND_PCT = 20;
+const ITPS_INACTIVE_DAYS = 2;
+
+function itpsDaysForOutlet(outletId: string) {
+  return store.itpsTransactions.filter((r) => r.outletId === outletId).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export interface ItpsTrendRow {
+  outletId: string;
+  outletName: string;
+  firstHalfAvg: number;
+  secondHalfAvg: number;
+  changePct: number;
+  direction: "up" | "down";
+}
+
+/**
+ * Real growing/degrowing ITPS (online) transaction trend per outlet — first half vs second half
+ * of whatever days are on file, from HPCL's own Online Transactions report. Only outlets present
+ * in that report; only swings of at least ITPS_TREND_PCT are surfaced, worst/best first.
+ */
+export function itpsGrowthTrend(): ItpsTrendRow[] {
+  const outletIds = [...new Set(store.itpsTransactions.map((r) => r.outletId))];
+  const rows: ItpsTrendRow[] = [];
+  for (const outletId of outletIds) {
+    const outlet = store.outlets.get(outletId);
+    if (!outlet) continue;
+    const days = itpsDaysForOutlet(outletId);
+    if (days.length < 4) continue; // not enough days on file for a meaningful first-half/second-half split
+    const mid = Math.floor(days.length / 2);
+    const firstHalf = days.slice(0, mid);
+    const secondHalf = days.slice(mid);
+    const firstHalfAvg = Math.round((firstHalf.reduce((s, d) => s + d.total, 0) / firstHalf.length) * 10) / 10;
+    const secondHalfAvg = Math.round((secondHalf.reduce((s, d) => s + d.total, 0) / secondHalf.length) * 10) / 10;
+    if (firstHalfAvg <= 0) continue;
+    const changePct = Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 1000) / 10;
+    if (Math.abs(changePct) < ITPS_TREND_PCT) continue;
+    rows.push({ outletId, outletName: outlet.name, firstHalfAvg, secondHalfAvg, changePct, direction: changePct > 0 ? "up" : "down" });
+  }
+  return rows.sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+}
+
+export interface ItpsInactiveRow {
+  outletId: string;
+  outletName: string;
+  days: number;
+  lastDates: string[];
+}
+
+/**
+ * Real outlets with zero ITPS (online) transactions on every one of the last ITPS_INACTIVE_DAYS
+ * days actually on file for that outlet — from HPCL's own Online Transactions report.
+ */
+export function itpsInactiveOutlets(): ItpsInactiveRow[] {
+  const outletIds = [...new Set(store.itpsTransactions.map((r) => r.outletId))];
+  const rows: ItpsInactiveRow[] = [];
+  for (const outletId of outletIds) {
+    const outlet = store.outlets.get(outletId);
+    if (!outlet) continue;
+    const days = itpsDaysForOutlet(outletId);
+    if (days.length < ITPS_INACTIVE_DAYS) continue;
+    const lastN = days.slice(-ITPS_INACTIVE_DAYS);
+    if (lastN.every((d) => d.total === 0)) {
+      rows.push({ outletId, outletName: outlet.name, days: ITPS_INACTIVE_DAYS, lastDates: lastN.map((d) => d.date) });
+    }
+  }
+  return rows;
+}

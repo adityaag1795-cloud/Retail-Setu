@@ -2391,6 +2391,8 @@ function wireCaseHandlers(c: any) {
 function renderPredictiveInsightsSection(insights: any): string {
   const stockVsSales = insights.stockVsSales as { outletId: string; outletName: string; kind: string; message: string }[];
   const dryRisk = insights.dryRiskWithoutCover as { outletId: string; outletName: string; criticality: string; message: string }[];
+  const itpsTrend = insights.itpsGrowthTrend as { outletId: string; outletName: string; firstHalfAvg: number; secondHalfAvg: number; changePct: number; direction: "up" | "down" }[];
+  const itpsInactive = insights.itpsInactiveOutlets as { outletId: string; outletName: string; days: number; lastDates: string[] }[];
   const sm = insights.suddenMoves;
   const moveLine = (m: any) => `<li>${escapeHtml(m.outletName)} — ${escapeHtml(m.product)} ${m.direction === "up" ? "up" : "down"} ${Math.abs(m.growthPct)}% vs last year</li>`;
   return `
@@ -2408,6 +2410,25 @@ function renderPredictiveInsightsSection(insights: any): string {
           ? `<ul>${dryRisk.map((x) => `<li><span class="badge badge--${x.criticality.toLowerCase()}">${escapeHtml(x.criticality)}</span> ${escapeHtml(x.message)}</li>`).join("")}</ul>`
           : `<p class="muted">No outlet is currently dry/going dry without an indent already placed and funds available.</p>`
       }
+    </div>
+    <h4>ITPS (online) transaction trend <span class="muted">(real Online Transactions report, first half vs second half of the days on file)</span></h4>
+    <div class="ai-output">
+      ${
+        itpsInactive.length
+          ? `<ul>${itpsInactive.map((x) => `<li><span class="badge badge--escalated">No transactions</span> ${escapeHtml(x.outletName)} has had zero ITPS transactions for the last ${x.days} day(s) on file (${x.lastDates.join(", ")}) — check if the online terminal is down.</li>`).join("")}</ul>`
+          : ""
+      }
+      ${
+        itpsTrend.length
+          ? `<ul>${itpsTrend
+              .map(
+                (x) =>
+                  `<li><span class="badge badge--${x.direction === "up" ? "resolved" : "escalated"}">${x.direction === "up" ? "Growth" : "Degrowth"}</span> ${escapeHtml(x.outletName)}: ${x.direction === "up" ? "up" : "down"} ${Math.abs(x.changePct)}% (${x.firstHalfAvg} &rarr; ${x.secondHalfAvg} avg txns/day)</li>`,
+              )
+              .join("")}</ul>`
+          : ""
+      }
+      ${itpsInactive.length === 0 && itpsTrend.length === 0 ? `<p class="muted">No outlet currently shows a notable ITPS growth/degrowth trend or a transaction-free streak.</p>` : ""}
     </div>
     <h4>Sudden YoY swings <span class="muted">(&plusmn;30% or more, real DSR month vs same month last year)</span></h4>
     <p class="muted">${insights.partialMonthCaveat}</p>

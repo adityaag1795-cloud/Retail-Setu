@@ -11,7 +11,7 @@ import {
   VEHICLE_TYPE_LABELS,
 } from "./trafficAnalytics.js";
 import { outletsBelowTradingAreaAverage } from "./tradingAreaAnalytics.js";
-import { dryRiskWithoutCover } from "./predictiveInsights.js";
+import { dryRiskWithoutCover, itpsInactiveOutlets } from "./predictiveInsights.js";
 import type { VehicleType } from "../types.js";
 
 const LOOKBACK_DAYS = 60;
@@ -206,6 +206,22 @@ export function syncPredictiveAlerts(): void {
     const title = `Dry risk, no cover — ${outlet.name}`;
     if (!hasOpenTask(outlet.id, title)) {
       createOutletTask(outlet, title, row.message, row.criticality === "HIGH" ? "High" : "Medium", row.criticality === "HIGH");
+    }
+  }
+  // Real ITPS (online) inactivity (HPCL's own Online Transactions report) — zero on every one of
+  // the last 2 days on file for that outlet.
+  for (const row of itpsInactiveOutlets()) {
+    const outlet = store.outlets.get(row.outletId);
+    if (!outlet) continue;
+    const title = `No ITPS transactions in ${row.days} days — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(
+        outlet,
+        title,
+        `${outlet.name}: zero ITPS (online) transactions on ${row.lastDates.join(" and ")} — check if the online payment terminal is down.`,
+        "Medium",
+        true,
+      );
     }
   }
   // Overdue Minutes of Meeting action points (recorded on the outlet page and in Module 7's

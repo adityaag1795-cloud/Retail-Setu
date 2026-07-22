@@ -40,6 +40,7 @@ export function nextId(prefix: string): string {
 }
 
 export const MILESTONE_TEMPLATE: { key: MilestoneKey; label: string }[] = [
+  { key: "OfferLetter", label: "Offer Letter taken from LOI holder" },
   { key: "MapSubmission", label: "Submission of site map" },
   { key: "DrawingAndDMLetter", label: "Submission of drawing & letter by company to District Magistrate" },
   { key: "PESOApplication", label: "PESO application filed" },

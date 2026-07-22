@@ -502,6 +502,7 @@ export interface LoiFileNoteForm {
 }
 
 export type MilestoneKey =
+  | "OfferLetter"
   | "MapSubmission"
   | "DrawingAndDMLetter"
   | "PESOApplication"

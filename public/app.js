@@ -171,30 +171,31 @@ function renderGanttChart(tasks) {
       <p class="muted">Critical path length: <strong>${totalDays}</strong> day(s), end-to-end.</p>
     </div>`;
 }
-/** Resolves a TaskItem/CalendarEvent-style linkedModule+linkedRecordId pair to a hash link, if any. */
+/** Resolves a TaskItem/CalendarEvent-style linkedModule+linkedRecordId pair to a hash link, if any. Analytics/Knowledge are whole-module links, so they don't need a record id. */
 function linkedRecordHref(linkedModule, linkedRecordId) {
-    if (!linkedModule || !linkedRecordId)
+    if (!linkedModule)
         return undefined;
     switch (linkedModule) {
         case "Outlet":
-            return `#/outlets/${linkedRecordId}`;
+            return linkedRecordId ? `#/outlets/${linkedRecordId}` : undefined;
         case "DealerCase":
-            return `#/cases/${linkedRecordId}`;
+            return linkedRecordId ? `#/cases/${linkedRecordId}` : undefined;
         case "Analytics":
             return `#/analytics`;
         case "Knowledge":
             return `#/knowledge`;
         case "DealerRequest":
-            return `#/dealer-desk/${linkedRecordId}`;
+            return linkedRecordId ? `#/dealer-desk/${linkedRecordId}` : `#/dealer-desk`;
         default:
             return undefined;
     }
 }
+/** Every task is clickable: its own external portal if it has one, else the record it's linked to, else the Module 4 task board. */
 function taskTitleHtml(t) {
     if (t.externalUrl)
         return `<a href="${escapeHtml(t.externalUrl)}" target="_blank" rel="noopener">${escapeHtml(t.title)}</a>`;
-    const href = linkedRecordHref(t.linkedModule, t.linkedRecordId);
-    return href ? `<a href="${href}">${escapeHtml(t.title)}</a>` : escapeHtml(t.title);
+    const href = linkedRecordHref(t.linkedModule, t.linkedRecordId) ?? "#/teams";
+    return `<a href="${href}">${escapeHtml(t.title)}</a>`;
 }
 function parseHash() {
     const hash = location.hash.replace(/^#\/?/, "");

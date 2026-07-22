@@ -1,13 +1,21 @@
 import type { DealerCase, LoiFileNoteForm, LoiActivityRow } from "../types.js";
+import { store } from "../store.js";
 
 /**
  * Prefills whatever real data the case already carries (application, feasibility form, ASC/LEC/
  * FVC results); the selection narrative, advertisement details, land-parcel description and
  * annexure list are genuinely case-specific prose the SO writes — left blank rather than guessed.
+ *
+ * A Resitement case already has outletId set (the existing outlet being resited — see
+ * createCase()), so its real Master Sheet data (District, Class of Market, Sales Area, Dealer
+ * Name) is used ahead of the Application/Feasibility form, which a resitement case may never
+ * fill in since the outlet already exists. A fresh new-site case has no outletId yet at this
+ * stage, so it falls through to the application/feasibility data exactly as before.
  */
 export function defaultLoiFileNoteForm(c: DealerCase): LoiFileNoteForm {
   const app = c.application;
   const asc = c.inspections.asc;
+  const existingOutlet = c.outletId ? store.outlets.get(c.outletId) : undefined;
   const lec = c.inspections.lec;
   const fvc = c.inspections.fvc;
 
@@ -45,10 +53,10 @@ export function defaultLoiFileNoteForm(c: DealerCase): LoiFileNoteForm {
 
     category: app?.applicantCategory ?? "",
     typeOfRO: app?.typeOfRO ?? "",
-    classOfMarket: c.feasibilityReportForm?.classOfMarket ?? "",
+    classOfMarket: existingOutlet?.masterSheet["Class of Market"] ?? c.feasibilityReportForm?.classOfMarket ?? "",
     typeOfSite: "",
     plotSizeM: app ? `${app.frontageM} X ${app.depthM}` : "",
-    district: app?.district ?? c.feasibilityReportForm?.district ?? "",
+    district: existingOutlet?.district ?? app?.district ?? c.feasibilityReportForm?.district ?? "",
     modeOfSelection: "",
     noOfResponse: "",
 
@@ -60,7 +68,7 @@ export function defaultLoiFileNoteForm(c: DealerCase): LoiFileNoteForm {
 
     activities,
 
-    selectedApplicantName: app?.applicantName ?? "",
+    selectedApplicantName: existingOutlet?.dealerName ?? app?.applicantName ?? "",
     advocateReportDate: "",
     landParcelDescription: "",
     jamabandiYear: "",

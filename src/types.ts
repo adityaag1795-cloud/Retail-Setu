@@ -892,6 +892,13 @@ export interface NozzleActivity {
   lastTransactionAt: string;
   /** True if this nozzle has gone quiet for several days while others at the same outlet keep transacting. */
   possiblyInactive: boolean;
+  /**
+   * Which product this specific nozzle dispenses (MS/HSD/POWER 95) — real per-nozzle product
+   * assignment was never captured when the transaction log was aggregated into this summary (only
+   * pump/nozzle numbers and transaction counts), so this is left undefined rather than guessed.
+   * Populate it if a real DU/pump-to-product mapping becomes available.
+   */
+  product?: string;
 }
 
 export interface AnalyticsQuery {

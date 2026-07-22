@@ -359,6 +359,11 @@ export async function decideModernisationRequest(
     const policyClauses = matchClauses("modernisation budget eam corpus fund working capital retail engineering", 3);
     const fileNoteRemarks = await getAiEngine().generate("modernisationFileNote", {
       outletName: outlet.name,
+      sapCode: outlet.masterSheet["SAP Code"] ?? "",
+      dealerName: outlet.dealerName ?? "",
+      district: outlet.district,
+      salesArea: outlet.salesArea,
+      classOfMarket: outlet.masterSheet["Class of Market"] ?? "",
       modernisationType: req.modernisationType,
       costEstimate: req.costEstimate,
       irr: req.irr,

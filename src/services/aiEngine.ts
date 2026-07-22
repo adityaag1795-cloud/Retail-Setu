@@ -141,8 +141,13 @@ class TemplateAiEngine implements AiEngine {
   // Real HPCL "file noting" convention: Background -> Action Taken -> Proposal -> Approval
   // Sought For. Title/Subject is already carried separately on FileNote.subject.
   private modernisationFileNote(ctx: Record<string, unknown>): string {
-    const { outletName, modernisationType, costEstimate, irr, dealerJustification, soJustification, policyClauses } = ctx as {
+    const { outletName, sapCode, dealerName, district, salesArea, classOfMarket, modernisationType, costEstimate, irr, dealerJustification, soJustification, policyClauses } = ctx as {
       outletName: string;
+      sapCode: string;
+      dealerName: string;
+      district: string;
+      salesArea: string;
+      classOfMarket: string;
       modernisationType: string;
       costEstimate: { totalInvestment: number };
       irr: { irrPct: number | null; minimumHurdlePct: number; meetsHurdle: boolean };
@@ -156,7 +161,19 @@ class TemplateAiEngine implements AiEngine {
         : `${irr.irrPct.toFixed(1)}% (${irr.meetsHurdle ? "meets" : "below"} the ${irr.minimumHurdlePct}% minimum per HQO circular)`;
     const clauseLine = policyClauses.length ? `Basis ${policyClauses.map((c) => `${c.documentTitle} clause ${c.clauseNumber}`).join("; ")}, it is ` : "It is ";
 
-    const background = `Dealer at ${outletName} has requested ${modernisationType} modernisation. Dealer justification: ${dealerJustification}`;
+    // Master Sheet details, auto-populated from the real outlet record (not re-typed by the SO) —
+    // only the fields actually present are shown, so a missing field is left out rather than
+    // printed as a blank/guessed value.
+    const masterSheetFields = [
+      sapCode && `SAP Code ${sapCode}`,
+      dealerName && `Dealer ${dealerName}`,
+      district && `District ${district}`,
+      salesArea && `Sales Area ${salesArea}`,
+      classOfMarket && `Class of Market ${classOfMarket}`,
+    ].filter(Boolean);
+    const masterSheetLine = masterSheetFields.length ? `[${masterSheetFields.join(", ")}] ` : "";
+
+    const background = `${masterSheetLine}Dealer at ${outletName} has requested ${modernisationType} modernisation. Dealer justification: ${dealerJustification}`;
     const actionTaken = `Cost estimate prepared and IRR computed by the SO. SO recommendation: ${soJustification}`;
     const proposal = `Cost estimate Rs. ${costEstimate.totalInvestment.toLocaleString("en-IN")}, IRR ${irrLine}. ${clauseLine}proposed that the ${modernisationType} modernisation at ${outletName} be approved and the budget note submitted as per EAM delegation of powers.`;
     const approvalSoughtFor = `Approval is sought for the ${modernisationType} modernisation investment of Rs. ${costEstimate.totalInvestment.toLocaleString("en-IN")} at ${outletName}.`;

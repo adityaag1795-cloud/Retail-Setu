@@ -2381,11 +2381,38 @@ function wireCaseHandlers(c: any) {
 // Module 3 — Predictive Analysis
 // ---------------------------------------------------------------------------
 
+/**
+ * Real cross-signal insights (predictiveInsights.ts): sales trend (real YoY DSR growth) combined
+ * with real current tank-stock level, plus a broader "sudden YoY swing" list. Only ever shows
+ * outlets that genuinely have both signals on file — an outlet the SO hasn't uploaded stock data
+ * for simply won't produce a stock-vs-sales insight, rather than a guessed one.
+ */
+function renderPredictiveInsightsSection(insights: any): string {
+  const stockVsSales = insights.stockVsSales as { outletId: string; outletName: string; kind: string; message: string }[];
+  const sm = insights.suddenMoves;
+  const moveLine = (m: any) => `<li>${escapeHtml(m.outletName)} — ${escapeHtml(m.product)} ${m.direction === "up" ? "up" : "down"} ${Math.abs(m.growthPct)}% vs last year</li>`;
+  return `
+    <div class="ai-output">
+      ${
+        stockVsSales.length
+          ? `<ul>${stockVsSales.map((x) => `<li>${escapeHtml(x.message)}</li>`).join("")}</ul>`
+          : `<p class="muted">No outlet currently shows both a real sales-trend signal and a real stock snapshot matching a rising-but-low-stock or dip-may-go-dry pattern.</p>`
+      }
+    </div>
+    <h4>Sudden YoY swings <span class="muted">(&plusmn;30% or more, real DSR month vs same month last year)</span></h4>
+    <p class="muted">${insights.partialMonthCaveat}</p>
+    <div class="grid-cards">
+      <div class="card"><h4>Sudden growth</h4><p class="big">${sm.upTotalCount}</p><ul>${sm.up.map(moveLine).join("") || "<li class='muted'>None</li>"}</ul>${sm.upTotalCount > sm.up.length ? `<p class="muted">Showing the ${sm.up.length} largest.</p>` : ""}</div>
+      <div class="card"><h4>Sudden dip</h4><p class="big">${sm.downTotalCount}</p><ul>${sm.down.map(moveLine).join("") || "<li class='muted'>None</li>"}</ul>${sm.downTotalCount > sm.down.length ? `<p class="muted">Showing the ${sm.down.length} largest.</p>` : ""}</div>
+    </div>`;
+}
+
 async function renderAnalytics(salesSummaryOutletId?: string) {
-  const [summary, outlets, salesSummary] = await Promise.all([
+  const [summary, outlets, salesSummary, insights] = await Promise.all([
     api.get("/analytics/summary"),
     api.get("/outlets"),
     api.get(`/analytics/sales-area-summary${salesSummaryOutletId ? `?outletId=${salesSummaryOutletId}` : ""}`),
+    api.get("/analytics/predictive-insights"),
   ]);
   app().innerHTML = `
     <section class="panel">
@@ -2408,6 +2435,9 @@ async function renderAnalytics(salesSummaryOutletId?: string) {
         <div class="card"><h3>Frequently dry (60d)</h3><p class="big">${summary.frequentlyDry.length}</p><ul>${summary.frequentlyDry.map((x: any) => `<li>${escapeHtml(x.name)}: ${x.dryDays} days</li>`).join("")}</ul></div>
         <div class="card"><h3>MS &gt;100KL / HSD &lt;10KL (30d)</h3><p class="big">${summary.highMsLowHsd.length}</p><ul>${summary.highMsLowHsd.map((x: any) => `<li>${escapeHtml(x.name)}: MS ${x.msKL} / HSD ${x.hsdKL}</li>`).join("")}</ul></div>
       </div>
+
+      <h3>Predictive Insights <span class="muted">(real sales trend &times; stock level, and sudden YoY swings)</span></h3>
+      ${renderPredictiveInsightsSection(insights)}
 
       <h3>Ask the analytics dashboard</h3>
       <div class="form--inline">

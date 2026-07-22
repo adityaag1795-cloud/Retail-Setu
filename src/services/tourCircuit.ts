@@ -53,7 +53,7 @@ export interface TourStop {
  * Top `maxStops` outlets by combined real-signal priority, sequenced geographically. Returns an
  * empty list (not a fabricated one) when no outlet currently has any of these signals active.
  */
-export function suggestedTourCircuit(maxStops = 8): TourStop[] {
+export function suggestedTourCircuit(maxStops = 3): TourStop[] {
   const byOutlet = new Map<string, { weight: number; reasons: string[] }>();
   const add = (outletId: string, label: string, weight: number) => {
     const cur = byOutlet.get(outletId) ?? { weight: 0, reasons: [] };

@@ -2437,51 +2437,38 @@ function renderPredictiveInsightsSection(insights: any): string {
 }
 
 /**
- * Suggested visit route (tourCircuit.ts): every real risk/opportunity signal already on this page
- * (dry-today, Criticality Monitor, ITPS inactivity, below-trading-area-average, inactive DUs,
- * sales-trend x stock, sudden dips, overdue MOM) combined into one priority score per outlet, then
- * sequenced by real outlet location — never a fabricated stop, an outlet with no active signal
- * simply doesn't appear.
+ * Compact suggested-visit callout (tourCircuit.ts) — top 2-3 outlets only, one-line reasoning
+ * each. Combines every real risk/opportunity signal already computed elsewhere (dry-today,
+ * Criticality Monitor, ITPS inactivity, below-trading-area-average, inactive DUs, sales-trend x
+ * stock, sudden dips, overdue MOM) into one priority score, sequenced by real outlet location —
+ * never a fabricated stop, an outlet with no active signal simply doesn't appear.
  */
 function renderTourCircuitSection(stops: any[]): string {
   if (!stops.length) {
-    return `<p class="muted">No outlet currently has an active risk/opportunity signal — nothing to route today.</p>`;
+    return `<p class="muted">No outlet currently has an active risk/opportunity signal.</p>`;
   }
   return `
-    <table class="table">
-      <thead><tr><th>#</th><th>Outlet</th><th>District</th><th>Priority</th><th>Why visit</th><th>Distance from previous stop</th></tr></thead>
-      <tbody>
-        ${stops
-          .map(
-            (s: any) => `<tr>
-          <td>${s.order}</td>
-          <td><a href="#/outlets/${s.outletId}">${escapeHtml(s.outletName)}</a></td>
-          <td>${escapeHtml(s.district)}</td>
-          <td>${s.priorityScore}</td>
-          <td><ul>${s.reasons.map((r: string) => `<li>${escapeHtml(r)}</li>`).join("")}</ul></td>
-          <td>${s.distanceFromPrevKm == null ? "&mdash; (start)" : `${s.distanceFromPrevKm} km`}</td>
-        </tr>`,
-          )
-          .join("")}
-      </tbody>
-    </table>`;
+    <ul class="tour-compact">
+      ${stops
+        .map(
+          (s: any) =>
+            `<li><a href="#/outlets/${s.outletId}">${escapeHtml(s.outletName)}</a> — ${escapeHtml(s.reasons[0])}${s.reasons.length > 1 ? ` <span class="muted">(+${s.reasons.length - 1} more)</span>` : ""}${s.distanceFromPrevKm != null ? ` <span class="muted">&middot; ${s.distanceFromPrevKm} km</span>` : ""}</li>`,
+        )
+        .join("")}
+    </ul>`;
 }
 
 async function renderAnalytics(salesSummaryOutletId?: string) {
-  const [summary, outlets, salesSummary, insights, tourCircuit] = await Promise.all([
+  const [summary, outlets, salesSummary, insights] = await Promise.all([
     api.get("/analytics/summary"),
     api.get("/outlets"),
     api.get(`/analytics/sales-area-summary${salesSummaryOutletId ? `?outletId=${salesSummaryOutletId}` : ""}`),
     api.get("/analytics/predictive-insights"),
-    api.get("/analytics/tour-circuit"),
   ]);
   app().innerHTML = `
     <section class="panel">
       <h2>Predictive Analysis</h2>
       <p class="muted">Sales feed shown as fetched from CRIS. Analytical dashboard for the Sales Officer — ask anything.</p>
-
-      <h3>Suggested Tour Circuit for SO <span class="muted">(AI-prioritised — every real risk signal below, combined into one visit-priority route by real outlet location)</span></h3>
-      ${renderTourCircuitSection(tourCircuit.stops)}
 
       <h3>Sales Area Summary <span class="muted">(real data — current month &amp; year to date)</span></h3>
       <label>Scope
@@ -2808,7 +2795,7 @@ function renderKpiTrackerSection(kpi: any[]): string {
 // ---------------------------------------------------------------------------
 
 async function renderCockpit() {
-  const [snap, energy] = await Promise.all([api.get("/cockpit"), api.get("/cockpit/energy-briefing")]);
+  const [snap, energy, tourCircuit] = await Promise.all([api.get("/cockpit"), api.get("/cockpit/energy-briefing"), api.get("/analytics/tour-circuit")]);
   const q = snap.quadrants;
   app().innerHTML = `
     <section class="panel">
@@ -2829,6 +2816,9 @@ async function renderCockpit() {
           )
           .join("")}
       </div>
+
+      <h4>Suggested tour <span class="muted">(AI-prioritised, real signals)</span></h4>
+      ${renderTourCircuitSection(tourCircuit.stops)}
 
       <h3>Circuit / town-wise pending calendar</h3>
       <table class="table">

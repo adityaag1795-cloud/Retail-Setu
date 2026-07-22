@@ -238,6 +238,8 @@ a { color: var(--accent); }
 .quadrant--Delegate { border-left: 4px solid var(--warn); }
 .quadrant--Eliminate { border-left: 4px solid var(--muted); }
 
+.tour-compact { margin: 6px 0 0; padding-left: 18px; font-size: 0.85rem; line-height: 1.6; }
+
 .inspection {
   background: var(--panel-2);
   border: 1px solid var(--border);

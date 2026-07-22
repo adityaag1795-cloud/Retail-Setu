@@ -2924,9 +2924,10 @@ function wireRequestRaiseForm(onDone: (id: string) => void) {
   });
 }
 
-async function renderDealerDesk() {
+async function renderDealerDesk(momOutletId?: string) {
   const [requests, outlets] = await Promise.all([api.get("/dealer-requests"), api.get("/outlets")]);
   const outletName = (id: string) => outlets.find((o: any) => o.id === id)?.name ?? id;
+  const momPoints = momOutletId ? await api.get(`/outlets/${momOutletId}/action-points`) : [];
 
   app().innerHTML = `
     <section class="panel">
@@ -2956,11 +2957,63 @@ async function renderDealerDesk() {
             .join("") || "<tr><td colspan='8'>No requests raised yet.</td></tr>"
         }</tbody>
       </table>
+
+      <h3>Minutes of Meeting <span class="muted">(SO &amp; Dealer discussions — recorded and shared by either side; overdue action items surface on the SO Cockpit)</span></h3>
+      <label>Outlet
+        <select id="mom-outlet-select">
+          <option value="">Select an outlet...</option>
+          ${outlets.map((o: any) => `<option value="${o.id}" ${o.id === momOutletId ? "selected" : ""}>${escapeHtml(o.name)}</option>`).join("")}
+        </select>
+      </label>
+      <div id="mom-section">
+        ${
+          momOutletId
+            ? `${renderActionPointsSection(momPoints)}
+        <form id="mom-form" class="form">
+          <label>Raised by <input name="raisedBy" placeholder="SO name, or the dealer's name" required /></label>
+          <label>Title <input name="title" required /></label>
+          <label>Notes / minutes <textarea name="notes"></textarea></label>
+          <label>Action required <input name="actionRequired" /></label>
+          <label>Owner <input name="owner" /></label>
+          <label>Due date <input name="dueDate" type="date" /></label>
+          <button type="submit" class="btn btn--sm">Add MOM entry</button>
+        </form>`
+            : `<p class="muted">Select an outlet to view or record its Minutes of Meeting log.</p>`
+        }
+      </div>
     </section>`;
 
   wireRequestRaiseForm((id) => {
     location.hash = `#/dealer-desk/${id}`;
   });
+
+  qs("#mom-outlet-select").addEventListener("change", (e) => {
+    const id = (e.target as HTMLSelectElement).value;
+    renderDealerDesk(id || undefined);
+  });
+
+  if (momOutletId) {
+    qs("#mom-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target as HTMLFormElement;
+      const data = formToObject(form) as any;
+      if (!data.actionRequired) delete data.actionRequired;
+      if (!data.owner) delete data.owner;
+      if (!data.dueDate) delete data.dueDate;
+      await api.post(`/outlets/${momOutletId}/action-points`, data);
+      toast("MOM entry added");
+      await renderDealerDesk(momOutletId);
+    });
+    qsa(".action-point-status").forEach((el) =>
+      el.addEventListener("change", async (e) => {
+        const select = e.target as HTMLSelectElement;
+        const apId = select.dataset["apId"]!;
+        await api.put(`/outlets/${momOutletId}/action-points/${apId}`, { status: select.value });
+        toast("Status updated");
+        await renderDealerDesk(momOutletId);
+      }),
+    );
+  }
 }
 
 async function renderDealerRequestDetail(id: string) {

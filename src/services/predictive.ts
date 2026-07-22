@@ -175,6 +175,25 @@ export function syncPredictiveAlerts(): void {
       createOutletTask(outlet, title, `${outlet.name}: ${nozzles.length} dispensing unit(s) look inactive per the DU transaction log — ${list}. Verify if genuinely down.`, "High", true);
     }
   }
+  // Overdue Minutes of Meeting action points (recorded on the outlet page and in Module 7's
+  // Dealer Request Desk) — a real due date that's passed with the item still not Done belongs on
+  // the Cockpit's due-tasks list, not just sitting quietly on the outlet's own MOM log.
+  const today = new Date().toISOString().slice(0, 10);
+  for (const ap of store.actionPoints.values()) {
+    if (!ap.dueDate || ap.status === "Done" || ap.dueDate >= today) continue;
+    const outlet = store.outlets.get(ap.outletId);
+    if (!outlet) continue;
+    const title = `Overdue MOM action point — ${ap.title}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(
+        outlet,
+        title,
+        `${outlet.name}: MOM action point "${ap.title}" (raised by ${ap.raisedBy}${ap.owner ? `, owner ${ap.owner}` : ""}) was due ${ap.dueDate} and is still ${ap.status}.`,
+        "High",
+        true,
+      );
+    }
+  }
 }
 
 /** Finds an outlet mentioned by name in free text — used by askAnalytics for outlet-specific intents. */

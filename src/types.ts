@@ -200,6 +200,14 @@ export interface Communication {
   /** Simulated PDF artifact name — a real deployment would attach the scanned file. */
   pdfRecordName: string;
   scanCopy: boolean;
+  /**
+   * Real file the SO attached when logging this communication (PDF/DOCX/TXT/MD) — same best-effort
+   * raw-text extraction as the ASC/LEC/FVC inspection uploads (formExtraction.ts), kept as a text
+   * preview only, not the raw bytes. Optional — a communication logged without an attachment has
+   * neither field.
+   */
+  uploadedFileName?: string;
+  uploadedTextPreview?: string;
 }
 
 // ---------------------------------------------------------------------------

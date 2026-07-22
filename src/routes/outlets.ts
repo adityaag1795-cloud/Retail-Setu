@@ -3,6 +3,7 @@ import { sendJson, readJsonBody, ApiError } from "../httpUtil.js";
 import { store, nextId } from "../store.js";
 import type { Communication } from "../types.js";
 import { generateSimplePdf } from "../services/pdfGen.js";
+import { extractRawTextFromUpload } from "../services/formExtraction.js";
 import { monthlyKL, dryDayCount, outletTankStock } from "../services/predictive.js";
 import { requestsForOutlet } from "../services/dealerDesk.js";
 import * as wf from "../services/dealerWorkflow.js";
@@ -152,8 +153,14 @@ export function registerOutletRoutes(router: Router) {
 
   router.post("/api/outlets/:id/communications", async (req, res, params) => {
     const outlet = outletOrThrow(params["id"]!);
-    const body = await readJsonBody<Partial<Communication>>(req);
+    const body = await readJsonBody<Partial<Communication> & { uploadFileName?: string; uploadText?: string; uploadBase64?: string }>(req);
     if (!body.subject || !body.summary) throw new ApiError(400, "subject and summary are required");
+    let uploadedFileName: string | undefined;
+    let uploadedTextPreview: string | undefined;
+    if (body.uploadFileName) {
+      uploadedFileName = body.uploadFileName;
+      uploadedTextPreview = extractRawTextFromUpload(body.uploadFileName, { text: body.uploadText, base64: body.uploadBase64 }).slice(0, 2000);
+    }
     const comm: Communication = {
       id: nextId("COMM"),
       outletId: outlet.id,
@@ -164,6 +171,8 @@ export function registerOutletRoutes(router: Router) {
       summary: body.summary,
       pdfRecordName: `${outlet.id}_${nextId("REC")}.pdf`,
       scanCopy: body.scanCopy ?? false,
+      uploadedFileName,
+      uploadedTextPreview,
     };
     store.communications.set(comm.id, comm);
     sendJson(res, 201, comm);
@@ -179,6 +188,7 @@ export function registerOutletRoutes(router: Router) {
       `Subject: ${comm.subject}`,
       "",
       comm.summary,
+      ...(comm.uploadedFileName ? ["", `Attached file: ${comm.uploadedFileName}`, "", comm.uploadedTextPreview ?? ""] : []),
     ]);
     res.writeHead(200, {
       "content-type": "application/pdf",

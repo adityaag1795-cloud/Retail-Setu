@@ -436,11 +436,11 @@ async function renderOutletDetail(id) {
 
       <h3>Communications on file</h3>
       <table class="table">
-        <thead><tr><th>Date</th><th>Direction</th><th>Channel</th><th>Subject</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Direction</th><th>Channel</th><th>Subject</th><th>Attachment</th><th></th></tr></thead>
         <tbody>
           ${report.communications
-        .map((c) => `<tr><td>${escapeHtml(c.date)}</td><td>${escapeHtml(c.direction)}</td><td>${escapeHtml(c.channel)}${c.scanCopy ? " (scan)" : ""}</td><td>${escapeHtml(c.subject)}</td><td><a href="/api/outlets/${o.id}/communications/${c.id}/pdf" target="_blank">PDF</a></td></tr>`)
-        .join("") || "<tr><td colspan='5'>No communications on file.</td></tr>"}
+        .map((c) => `<tr><td>${escapeHtml(c.date)}</td><td>${escapeHtml(c.direction)}</td><td>${escapeHtml(c.channel)}${c.scanCopy ? " (scan)" : ""}</td><td>${escapeHtml(c.subject)}</td><td>${c.uploadedFileName ? escapeHtml(c.uploadedFileName) : '<span class="muted">-</span>'}</td><td><a href="/api/outlets/${o.id}/communications/${c.id}/pdf" target="_blank">PDF</a></td></tr>`)
+        .join("") || "<tr><td colspan='6'>No communications on file.</td></tr>"}
         </tbody>
       </table>
 
@@ -455,6 +455,9 @@ async function renderOutletDetail(id) {
         <label>Subject <input name="subject" required /></label>
         <label>Summary <textarea name="summary" required></textarea></label>
         <label><input type="checkbox" name="scanCopy" /> This is a scanned copy of a physical communication</label>
+        <label>Attach a PDF/DOCX/TXT of the actual communication (optional — reads real text out of the file for the record)
+          <input id="comm-upload" type="file" accept=".txt,.md,.pdf,.docx" />
+        </label>
         <button type="submit" class="btn">Save communication</button>
       </form>
 
@@ -489,12 +492,20 @@ async function renderOutletDetail(id) {
         e.preventDefault();
         const form = e.target;
         const data = formToObject(form);
+        const uploadInput = qs("#comm-upload");
+        const file = uploadInput.files?.[0];
+        const upload = file
+            ? /\.(pdf|docx)$/i.test(file.name)
+                ? { uploadFileName: file.name, uploadBase64: await fileToBase64(file) }
+                : { uploadFileName: file.name, uploadText: await file.text() }
+            : {};
         await api.post(`/outlets/${o.id}/communications`, {
             direction: data["direction"],
             channel: data["channel"],
             subject: data["subject"],
             summary: data["summary"],
             scanCopy: form.querySelector('[name="scanCopy"]').checked,
+            ...upload,
         });
         toast("Communication saved");
         await renderOutletDetail(id);
@@ -2636,16 +2647,6 @@ async function renderKnowledge() {
       </form>
       <div id="policy-answer"></div>
 
-      <h3>Add a policy clause</h3>
-      <form id="add-policy-form" class="form">
-        <label>Document title <input name="documentTitle" required /></label>
-        <label>Clause number <input name="clauseNumber" /></label>
-        <label>Heading <input name="heading" required /></label>
-        <label>Clause text <textarea name="text" required></textarea></label>
-        <label>Tags (comma-separated) <input name="tagsRaw" /></label>
-        <button type="submit" class="btn">Add clause</button>
-      </form>
-
       <h3>HPCL Portals <span class="muted">(quick links to other internal systems — opens in a new tab)</span></h3>
       <table class="table">
         <thead><tr><th>Portal</th><th>Link</th></tr></thead>
@@ -2661,19 +2662,6 @@ async function renderKnowledge() {
         qs("#policy-answer").innerHTML = `
       <div class="ai-output">${escapeHtml(res.answer)}</div>
       ${res.matchedClauses.length ? `<h4>References</h4><ul>${res.matchedClauses.map((c) => `<li>${escapeHtml(c.documentTitle)} ${escapeHtml(c.clauseNumber)} — ${escapeHtml(c.heading)}</li>`).join("")}</ul>` : ""}`;
-    });
-    qs("#add-policy-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const data = formToObject(e.target);
-        await api.post("/policy-clauses", {
-            documentTitle: data["documentTitle"],
-            clauseNumber: data["clauseNumber"],
-            heading: data["heading"],
-            text: data["text"],
-            tags: (data["tagsRaw"] ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-        });
-        toast("Clause added");
-        await renderKnowledge();
     });
 }
 // ---------------------------------------------------------------------------

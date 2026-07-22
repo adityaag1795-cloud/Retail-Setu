@@ -848,6 +848,23 @@ export interface TankStock {
 }
 
 /**
+ * Real per-outlet dry-risk/cover status from HPCL's own "Outlet Criticality Monitor" workbook —
+ * whether the outlet is (or is about to go, intraday) dry in MS/HSD, and whether an indent has
+ * actually been placed and funds are available to cover it. Real data exists only for the outlets
+ * present in that workbook; left absent elsewhere rather than guessed.
+ */
+export interface OutletCriticalityMonitor {
+  outletId: ID;
+  dryMS: boolean;
+  dryMSIntraday: boolean;
+  dryHSD: boolean;
+  dryHSDIntraday: boolean;
+  indentPlaced: boolean;
+  fundsAvailable: boolean;
+  criticality: "HIGH" | "MEDIUM" | "LOW";
+}
+
+/**
  * Vehicle-type classification, by transaction amount, per the real DU/RELCON automation feed —
  * SO's own real thresholds: <Rs 500 Two-Wheeler, Rs 500-10,000 Four-Wheeler, Rs 10,000-100,000
  * HMV (heavy motor vehicle), >Rs 100,000 Bowser supply.

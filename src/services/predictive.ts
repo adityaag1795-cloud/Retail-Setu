@@ -11,6 +11,7 @@ import {
   VEHICLE_TYPE_LABELS,
 } from "./trafficAnalytics.js";
 import { outletsBelowTradingAreaAverage } from "./tradingAreaAnalytics.js";
+import { dryRiskWithoutCover } from "./predictiveInsights.js";
 import type { VehicleType } from "../types.js";
 
 const LOOKBACK_DAYS = 60;
@@ -195,6 +196,16 @@ export function syncPredictiveAlerts(): void {
     if (!hasOpenTask(outlet.id, title)) {
       const list = nozzles.map((n) => `Pump ${n.pumpNo}/Nozzle ${n.nozzleNo} (last transaction ${n.lastTransactionAt.slice(0, 10)})`).join(", ");
       createOutletTask(outlet, title, `${outlet.name}: ${nozzles.length} dispensing unit(s) look inactive per the DU transaction log — ${list}. Verify if genuinely down.`, "High", true);
+    }
+  }
+  // Real dry-risk-without-cover (Outlet Criticality Monitor) — dry/going-dry with no indent placed
+  // and/or no funds available, i.e. nothing already in motion to fix it.
+  for (const row of dryRiskWithoutCover()) {
+    const outlet = store.outlets.get(row.outletId);
+    if (!outlet) continue;
+    const title = `Dry risk, no cover — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(outlet, title, row.message, row.criticality === "HIGH" ? "High" : "Medium", row.criticality === "HIGH");
     }
   }
   // Overdue Minutes of Meeting action points (recorded on the outlet page and in Module 7's

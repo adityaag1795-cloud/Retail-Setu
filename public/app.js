@@ -2123,6 +2123,7 @@ function wireCaseHandlers(c) {
  */
 function renderPredictiveInsightsSection(insights) {
     const stockVsSales = insights.stockVsSales;
+    const dryRisk = insights.dryRiskWithoutCover;
     const sm = insights.suddenMoves;
     const moveLine = (m) => `<li>${escapeHtml(m.outletName)} — ${escapeHtml(m.product)} ${m.direction === "up" ? "up" : "down"} ${Math.abs(m.growthPct)}% vs last year</li>`;
     return `
@@ -2130,6 +2131,12 @@ function renderPredictiveInsightsSection(insights) {
       ${stockVsSales.length
         ? `<ul>${stockVsSales.map((x) => `<li>${escapeHtml(x.message)}</li>`).join("")}</ul>`
         : `<p class="muted">No outlet currently shows both a real sales-trend signal and a real stock snapshot matching a rising-but-low-stock or dip-may-go-dry pattern.</p>`}
+    </div>
+    <h4>Dry / going dry with no cover <span class="muted">(real Outlet Criticality Monitor — indent not placed and/or funds not available)</span></h4>
+    <div class="ai-output">
+      ${dryRisk.length
+        ? `<ul>${dryRisk.map((x) => `<li><span class="badge badge--${x.criticality.toLowerCase()}">${escapeHtml(x.criticality)}</span> ${escapeHtml(x.message)}</li>`).join("")}</ul>`
+        : `<p class="muted">No outlet is currently dry/going dry without an indent already placed and funds available.</p>`}
     </div>
     <h4>Sudden YoY swings <span class="muted">(&plusmn;30% or more, real DSR month vs same month last year)</span></h4>
     <p class="muted">${insights.partialMonthCaveat}</p>

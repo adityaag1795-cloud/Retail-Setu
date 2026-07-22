@@ -19,6 +19,7 @@ import type {
   TradingAreaSnapshot,
   OutletDataNote,
   EnergyManualEntry,
+  OutletCriticalityMonitor,
 } from "./types.js";
 import {
   seedOutlets,
@@ -32,6 +33,7 @@ import {
   seedTradingAreas,
 } from "./data/seed.js";
 import { SEED_DAILY_TRAFFIC, SEED_NOZZLE_ACTIVITY } from "./data/trafficData.js";
+import { SEED_OUTLET_CRITICALITY } from "./data/outletCriticalityData.js";
 
 let counter = 10000;
 export function nextId(prefix: string): string {
@@ -72,12 +74,15 @@ class Store {
   outletDataNotes = new Map<string, OutletDataNote>();
   /** SO's manual fallback entries for the daily energy-news/crude-rate cockpit column — used when the live fetch fails. */
   energyManualEntries: EnergyManualEntry[] = [];
+  /** Real per-outlet dry-risk/indent/funds status from HPCL's own Outlet Criticality Monitor workbook. */
+  criticalityMonitor: OutletCriticalityMonitor[] = [];
 
   constructor() {
     seedOutlets.forEach((o) => this.outlets.set(o.id, o));
     seedCommunications.forEach((c) => this.communications.set(c.id, c));
     this.salesRecords = [...seedSalesRecords];
     this.stockSnapshots = [...seedStockSnapshots];
+    this.criticalityMonitor = [...SEED_OUTLET_CRITICALITY];
     this.dailyTraffic = [...SEED_DAILY_TRAFFIC];
     this.nozzleActivity = [...SEED_NOZZLE_ACTIVITY];
     seedTeam.forEach((t) => this.team.set(t.id, t));

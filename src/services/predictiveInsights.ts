@@ -12,7 +12,6 @@
  */
 import { store } from "../store.js";
 import { outletGrowthReport } from "./growthAnalysis.js";
-import { outletTankStock } from "./predictive.js";
 
 const LOW_STOCK_PCT = 20;
 const DRY_RISK_STOCK_PCT = 15;
@@ -21,7 +20,7 @@ const COLLAPSE_GROWTH_PCT = -50;
 const SUDDEN_MOVE_PCT = 30;
 
 function worstStockPct(outletId: string): { product: string; pct: number } | null {
-  const rows = outletTankStock(outletId);
+  const rows = store.stockSnapshots.filter((s) => s.outletId === outletId);
   let worst: { product: string; pct: number } | null = null;
   for (const r of rows) {
     if (r.capacityLtr <= 0) continue;
@@ -92,4 +91,51 @@ export function suddenSalesMoves(): SuddenSalesMove[] {
     }
   }
   return rows.sort((a, b) => Math.abs(b.growthPct) - Math.abs(a.growthPct));
+}
+
+export interface DryRiskWithoutCoverRow {
+  outletId: string;
+  outletName: string;
+  dryProducts: string[]; // e.g. ["MS", "HSD (intraday)"]
+  indentPlaced: boolean;
+  fundsAvailable: boolean;
+  criticality: "HIGH" | "MEDIUM" | "LOW";
+  message: string;
+}
+
+/**
+ * Real outlets that are (or are about to go, intraday) dry in MS/HSD per HPCL's own Outlet
+ * Criticality Monitor workbook, where an indent hasn't actually been placed or funds aren't
+ * available to cover one — i.e. genuinely at risk with nothing already in motion to fix it. An
+ * outlet that's dry but already has both an indent placed and funds available is left out, since
+ * the fix is already underway. Only covers outlets present in that workbook.
+ */
+export function dryRiskWithoutCover(): DryRiskWithoutCoverRow[] {
+  const rows: DryRiskWithoutCoverRow[] = [];
+  for (const row of store.criticalityMonitor) {
+    const outlet = store.outlets.get(row.outletId);
+    if (!outlet) continue;
+    const dryProducts: string[] = [];
+    if (row.dryMS) dryProducts.push("MS");
+    else if (row.dryMSIntraday) dryProducts.push("MS (intraday)");
+    if (row.dryHSD) dryProducts.push("HSD");
+    else if (row.dryHSDIntraday) dryProducts.push("HSD (intraday)");
+    if (dryProducts.length === 0) continue; // not dry at all — no risk to flag
+    if (row.indentPlaced && row.fundsAvailable) continue; // already covered
+
+    const reasons: string[] = [];
+    if (!row.indentPlaced) reasons.push("indent not placed");
+    if (!row.fundsAvailable) reasons.push("funds not available");
+    rows.push({
+      outletId: outlet.id,
+      outletName: outlet.name,
+      dryProducts,
+      indentPlaced: row.indentPlaced,
+      fundsAvailable: row.fundsAvailable,
+      criticality: row.criticality,
+      message: `${outlet.name}: dry/going dry in ${dryProducts.join(" & ")} — ${reasons.join(" and ")} (criticality: ${row.criticality}).`,
+    });
+  }
+  const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
+  return rows.sort((a, b) => rank[a.criticality] - rank[b.criticality]);
 }

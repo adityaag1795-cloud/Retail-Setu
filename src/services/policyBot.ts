@@ -17,6 +17,8 @@ import { getAiEngine } from "./aiEngine.js";
  *    5.2" should surface that exact clause even if no other word overlaps), and
  *  - a loose substring fallback (only used when the strict pass finds nothing) so a genuinely
  *    relevant clause with slightly different phrasing still surfaces instead of a flat "no match".
+ * References are then scoped to a single document (see matchClauses) — a question gets specific
+ * clauses from the one most relevant policy, not a scatter of citations across several.
  */
 
 // Generic connector words long enough to pass the length filter but too common to mean anything —
@@ -84,29 +86,53 @@ function score(clause: PolicyClause, question: string, terms: string[], idf: Map
   return s;
 }
 
+/**
+ * Answers should read like they came from one governing document, not a scatter of citations
+ * across unrelated policies for a single question. So after scoring every clause, this picks the
+ * single best-matching DOCUMENT (the one holding the highest-scoring individual clause — a
+ * document with one very strong hit beats one with several weak scattered ones) and returns only
+ * that document's own top-scoring clauses, up to `limit`.
+ */
 export function matchClauses(question: string, limit = 3): PolicyClause[] {
   const all = [...store.policyClauses.values()];
   const terms = tokenize(question);
   const idf = buildIdf(all);
 
-  const scored = all
-    .map((c) => ({ clause: c, s: score(c, question, terms, idf) }))
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s);
+  let scored = all.map((c) => ({ clause: c, s: score(c, question, terms, idf) })).filter((x) => x.s > 0);
 
-  if (scored.length > 0) return scored.slice(0, limit).map((x) => x.clause);
+  if (scored.length === 0) {
+    // Loose fallback: strict whole-word matching found nothing — try plain substring matching
+    // (handles plurals, hyphenation, and word-boundary misses) before giving up entirely.
+    scored = all
+      .map((c) => {
+        const haystack = clauseHaystack(c);
+        const hits = terms.reduce((acc, term) => (haystack.includes(term) ? acc + 1 : acc), 0);
+        return { clause: c, s: hits };
+      })
+      .filter((x) => x.s > 0);
+  }
+  if (scored.length === 0) return [];
 
-  // Loose fallback: strict whole-word matching found nothing — try plain substring matching
-  // (handles plurals, hyphenation, and word-boundary misses) before giving up entirely.
-  const looseScored = all
-    .map((c) => {
-      const haystack = clauseHaystack(c);
-      const hits = terms.reduce((acc, term) => (haystack.includes(term) ? acc + 1 : acc), 0);
-      return { clause: c, s: hits };
-    })
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s);
-  return looseScored.slice(0, limit).map((x) => x.clause);
+  const byDoc = new Map<string, { clause: PolicyClause; s: number }[]>();
+  for (const item of scored) {
+    const list = byDoc.get(item.clause.documentTitle) ?? [];
+    list.push(item);
+    byDoc.set(item.clause.documentTitle, list);
+  }
+  let bestDoc = "";
+  let bestDocScore = -Infinity;
+  for (const [doc, items] of byDoc) {
+    const top = Math.max(...items.map((i) => i.s));
+    if (top > bestDocScore) {
+      bestDocScore = top;
+      bestDoc = doc;
+    }
+  }
+  return byDoc
+    .get(bestDoc)!
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limit)
+    .map((x) => x.clause);
 }
 
 export async function askPolicyBot(question: string): Promise<PolicyAnswer> {

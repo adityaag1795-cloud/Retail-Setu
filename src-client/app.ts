@@ -796,12 +796,12 @@ async function renderTradingAreaDetail(id: string) {
               (d: any) => `<tr${d.omc === "HPCL" ? ' class="row--highlight"' : ""}>
             <td>${d.outletId ? `<a href="#/outlets/${d.outletId}">${escapeHtml(d.dealerName)}</a>` : escapeHtml(d.dealerName)}</td>
             <td>${escapeHtml(d.omc)}</td>
-            <td>${d.msVolumeKL.toFixed(1)}</td>
-            <td>${d.msMarketSharePct.toFixed(1)}%</td>
-            <td>${d.hsdVolumeKL.toFixed(1)}</td>
-            <td>${d.hsdMarketSharePct.toFixed(1)}%</td>
-            <td>${d.tmfVolumeKL.toFixed(1)}</td>
-            <td>${d.tmfMarketSharePct.toFixed(1)}%</td>
+            <td>${fmtKL(d.msVolumeKL)}</td>
+            <td>${fmtPct(d.msMarketSharePct)}</td>
+            <td>${fmtKL(d.hsdVolumeKL)}</td>
+            <td>${fmtPct(d.hsdMarketSharePct)}</td>
+            <td>${fmtKL(d.tmfVolumeKL)}</td>
+            <td>${fmtPct(d.tmfMarketSharePct)}</td>
           </tr>`,
             )
             .join("")}
@@ -2335,6 +2335,14 @@ async function renderAnalytics(salesSummaryOutletId?: string) {
 /** "No CY data on file" (Power) reads better than a bare "-" which could be mistaken for a real zero. */
 function fmtAchieved(n: number | null): string {
   return n != null ? n.toFixed(2) : "No CY data";
+}
+
+/** A handful of dealers in the real Trading Area report have no figures on file for a given month — show that plainly rather than a fabricated 0. */
+function fmtKL(n: number | undefined): string {
+  return n != null ? n.toFixed(1) : "—";
+}
+function fmtPct(n: number | undefined): string {
+  return n != null ? `${n.toFixed(1)}%` : "—";
 }
 
 function renderSalesAreaSummarySection(rows: any[]): string {

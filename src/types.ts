@@ -95,12 +95,16 @@ export interface TradingAreaDealerFigures {
   dealerName: string;
   omc: string; // as reported: "HPCL" | "BPCL" | "IOCL" etc.
   outletId?: ID; // matched to one of our own outlets, where it is one
-  msVolumeKL: number; // latest FY, monthly
-  hsdVolumeKL: number;
-  tmfVolumeKL: number; // Total Market Fuel (MS+HSD)
-  msMarketSharePct: number;
-  hsdMarketSharePct: number;
-  tmfMarketSharePct: number;
+  /**
+   * Some dealers genuinely have no figures in the source report for the snapshot month (a handful
+   * report nothing all year) — left undefined rather than shown as a fabricated 0.
+   */
+  msVolumeKL?: number; // latest FY, monthly
+  hsdVolumeKL?: number;
+  tmfVolumeKL?: number; // Total Market Fuel (MS+HSD)
+  msMarketSharePct?: number;
+  hsdMarketSharePct?: number;
+  tmfMarketSharePct?: number;
 }
 
 export interface TradingAreaSnapshot {

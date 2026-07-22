@@ -2809,35 +2809,273 @@ export const seedCommunications: Communication[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Module 1 — Trading Areas (real HPCL Network Planning "Market Share" report)
+// Module 1 — Trading Areas (real HPCL Network Planning "For The Month" Market Share report)
 // ---------------------------------------------------------------------------
 
-// Real dealer-wise MS/HSD/TMF volume + market-share figures for one trading area (Jun, FY26-27),
-// covering the NIT/Bata Chowk cluster of Faridabad Retail SA — the only trading area a source
-// report was supplied for. 4 of the 7 dealers are our own outlets (matched by name); the other 3
-// are competitor OMC outlets sharing the same catchment, kept for the competitive picture.
+// Real dealer-wise MS/HSD/TMF volume + market-share figures for all 16 named trading areas on
+// file for Faridabad Retail SA, parsed from HPCL's own "For_The_Month.xlsx" export. The report
+// carries every month of the current FY (26-27) side by side with the same calendar month in the
+// 4 preceding years; Apr/May/Jun 26-27 are the only months with real (non-blank) figures as of
+// this upload (Jul 26-27 onward hasn't happened yet), so Jun — the latest closed month — is used
+// as the "current" snapshot for every area, consistent with the one snapshot-per-area design (see
+// TradingAreaSnapshot). A few individual dealers (e.g. "HR 87", "MSHSD INDER FILLING STATION",
+// our own Gayatri Filling Station) have no figures on file for any month this year in the source
+// report — their volume/share fields are simply omitted rather than shown as a fabricated 0 (see
+// TradingAreaDealerFigures). 24 of the ~104 dealer rows are our own outlets (matched by name,
+// case/prefix-insensitive — the report writes some as "MS/HSD <name>" or "M/s <name>"); the rest
+// are competitor OMC (BPCL/IOCL) outlets sharing the same catchment, kept for the competitive
+// picture. This replaces the single hand-entered "NIT/Bata Chowk" trading area from before a full
+// report was available — its 4 outlets and their real KL volumes carry over unchanged into
+// "Neelam flyover" below (the real name for that catchment), but its market-share percentages
+// were wrong and are corrected here from the report's own %MktSh columns.
 export const seedTradingAreas: TradingAreaSnapshot[] = [
   {
-    id: "TA-NIT-BATACHOWK",
-    name: "Faridabad Retail SA — NIT / Bata Chowk Belt",
+    id: "TA-148N-NA",
+    name: "Faridabad Retail SA — 148N NA",
     month: "Jun",
     dealers: [
-      { dealerName: "HP Service Center Faridabad", omc: "HPCL", outletId: "OUT-41068065", msVolumeKL: 570.0, hsdVolumeKL: 198.0, tmfVolumeKL: 768.0, msMarketSharePct: 18.92, hsdMarketSharePct: 7.84, tmfMarketSharePct: 13.86 },
-      { dealerName: "Raj Auto Service", omc: "HPCL", outletId: "OUT-41056957", msVolumeKL: 355.0, hsdVolumeKL: 585.0, tmfVolumeKL: 940.0, msMarketSharePct: 11.78, hsdMarketSharePct: 23.15, tmfMarketSharePct: 16.97 },
-      { dealerName: "Sunder Service Station", omc: "HPCL", outletId: "OUT-41056574", msVolumeKL: 490.0, hsdVolumeKL: 696.0, tmfVolumeKL: 1186.0, msMarketSharePct: 16.26, hsdMarketSharePct: 27.54, tmfMarketSharePct: 21.41 },
-      { dealerName: "The Auto Supply Company", omc: "HPCL", outletId: "OUT-41056955", msVolumeKL: 620.0, hsdVolumeKL: 260.0, tmfVolumeKL: 880.0, msMarketSharePct: 20.58, hsdMarketSharePct: 10.29, tmfMarketSharePct: 15.88 },
-      { dealerName: "Tara Chand Saluja & Sons", omc: "BPCL", msVolumeKL: 262.0, hsdVolumeKL: 102.0, tmfVolumeKL: 364.0, msMarketSharePct: 8.70, hsdMarketSharePct: 4.04, tmfMarketSharePct: 6.57 },
-      { dealerName: "Auto Care - Faridabad", omc: "IOCL", msVolumeKL: 297.0, hsdVolumeKL: 393.0, tmfVolumeKL: 690.0, msMarketSharePct: 9.86, hsdMarketSharePct: 15.55, tmfMarketSharePct: 12.45 },
-      { dealerName: "City Motors", omc: "IOCL", msVolumeKL: 419.0, hsdVolumeKL: 293.0, tmfVolumeKL: 712.0, msMarketSharePct: 13.91, hsdMarketSharePct: 11.59, tmfMarketSharePct: 12.85 },
+      { dealerName: "MS/HSD HP KALRA FILLING STATION", omc: "HPCL", outletId: "OUT-41015064", msVolumeKL: 180.0, hsdVolumeKL: 180.0, tmfVolumeKL: 360.0, msMarketSharePct: 4.39, hsdMarketSharePct: 8.54, tmfMarketSharePct: 5.8 },
+      { dealerName: "ABHI BHAVI FILLING STATION", omc: "BPCL", msVolumeKL: 324.0, hsdVolumeKL: 174.0, tmfVolumeKL: 498.0, msMarketSharePct: 7.9, hsdMarketSharePct: 8.26, tmfMarketSharePct: 8.02 },
+      { dealerName: "NAVIN FUELS", omc: "BPCL", msVolumeKL: 274.0, hsdVolumeKL: 42.0, tmfVolumeKL: 316.0, msMarketSharePct: 6.68, hsdMarketSharePct: 1.99, tmfMarketSharePct: 5.09 },
+      { dealerName: "Gee Dee Filling Station", omc: "IOCL", msVolumeKL: 345.0, hsdVolumeKL: 247.0, tmfVolumeKL: 592.0, msMarketSharePct: 8.41, hsdMarketSharePct: 11.72, tmfMarketSharePct: 9.53 },
+      { dealerName: "RAJVIR AUTO CENTER", omc: "IOCL", msVolumeKL: 255.0, hsdVolumeKL: 105.0, tmfVolumeKL: 360.0, msMarketSharePct: 6.21, hsdMarketSharePct: 4.98, tmfMarketSharePct: 5.8 },
+    ],
+  },
+  {
+    id: "TA-19-LHS",
+    name: "Faridabad Retail SA — 19 LHS",
+    month: "Jun",
+    dealers: [
+      { dealerName: "HP ELLAR FILLING STATION", omc: "HPCL", outletId: "OUT-41014439", msVolumeKL: 144.0, hsdVolumeKL: 428.0, tmfVolumeKL: 572.0, msMarketSharePct: 2.8, hsdMarketSharePct: 5.73, tmfMarketSharePct: 4.53 },
+      { dealerName: "SHIVA CARES", omc: "HPCL", outletId: "OUT-41028014", msVolumeKL: 484.0, hsdVolumeKL: 364.0, tmfVolumeKL: 848.0, msMarketSharePct: 9.41, hsdMarketSharePct: 4.87, tmfMarketSharePct: 6.72 },
+      { dealerName: "VIKAS FILLING STATION", omc: "BPCL", msVolumeKL: 131.0, hsdVolumeKL: 398.0, tmfVolumeKL: 529.0, msMarketSharePct: 2.55, hsdMarketSharePct: 5.32, tmfMarketSharePct: 4.19 },
+      { dealerName: "AVADH FILLING STATION", omc: "IOCL", msVolumeKL: 425.0, hsdVolumeKL: 285.0, tmfVolumeKL: 710.0, msMarketSharePct: 8.27, hsdMarketSharePct: 3.81, tmfMarketSharePct: 5.63 },
+      { dealerName: "CHAUDHARY AUTO SERVICE", omc: "IOCL", msVolumeKL: 117.0, hsdVolumeKL: 261.0, tmfVolumeKL: 378.0, msMarketSharePct: 2.28, hsdMarketSharePct: 3.49, tmfMarketSharePct: 3.0 },
+      { dealerName: "JOHAR PETRO", omc: "IOCL", msVolumeKL: 100.0, hsdVolumeKL: 400.0, tmfVolumeKL: 500.0, msMarketSharePct: 1.94, hsdMarketSharePct: 5.35, tmfMarketSharePct: 3.96 },
+      { dealerName: "NARAIN SERVICE STATION", omc: "IOCL", msVolumeKL: 249.0, hsdVolumeKL: 255.0, tmfVolumeKL: 504.0, msMarketSharePct: 4.84, hsdMarketSharePct: 3.41, tmfMarketSharePct: 3.99 },
+      { dealerName: "SHAHEED ZAKIR HUSSAIN F/STN", omc: "IOCL", msVolumeKL: 59.0, hsdVolumeKL: 209.0, tmfVolumeKL: 268.0, msMarketSharePct: 1.15, hsdMarketSharePct: 2.8, tmfMarketSharePct: 2.12 },
+    ],
+  },
+  {
+    id: "TA-19-RHS",
+    name: "Faridabad Retail SA — 19 RHS",
+    month: "Jun",
+    dealers: [
+      { dealerName: "MSHSD AKASH ARJUN FILLING STATION", omc: "HPCL", outletId: "OUT-41009252", msVolumeKL: 13.0, hsdVolumeKL: 43.0, tmfVolumeKL: 56.0, msMarketSharePct: 0.39, hsdMarketSharePct: 0.8, tmfMarketSharePct: 0.65 },
+      { dealerName: "PAAWAN FILLING STATION", omc: "HPCL", outletId: "OUT-41027708", msVolumeKL: 110.0, hsdVolumeKL: 430.0, tmfVolumeKL: 540.0, msMarketSharePct: 3.33, hsdMarketSharePct: 8.02, tmfMarketSharePct: 6.24 },
+      { dealerName: "TARA CHAND SALUJA & SONS", omc: "BPCL", msVolumeKL: 155.0, hsdVolumeKL: 125.0, tmfVolumeKL: 280.0, msMarketSharePct: 4.7, hsdMarketSharePct: 2.33, tmfMarketSharePct: 3.23 },
+      { dealerName: "USHA HIGHWAY FILLING STATION", omc: "BPCL", msVolumeKL: 283.0, hsdVolumeKL: 329.0, tmfVolumeKL: 612.0, msMarketSharePct: 8.58, hsdMarketSharePct: 6.14, tmfMarketSharePct: 7.07 },
+      { dealerName: "FARIDABAD SERVICE STATION", omc: "IOCL", msVolumeKL: 128.0, hsdVolumeKL: 158.0, tmfVolumeKL: 286.0, msMarketSharePct: 3.88, hsdMarketSharePct: 2.95, tmfMarketSharePct: 3.3 },
+      { dealerName: "KESHAV MOTORS", omc: "IOCL", msVolumeKL: 208.0, hsdVolumeKL: 244.0, tmfVolumeKL: 452.0, msMarketSharePct: 6.3, hsdMarketSharePct: 4.55, tmfMarketSharePct: 5.22 },
+      { dealerName: "S O SALES CORPORATION", omc: "IOCL", msVolumeKL: 128.0, hsdVolumeKL: 172.0, tmfVolumeKL: 300.0, msMarketSharePct: 3.88, hsdMarketSharePct: 3.21, tmfMarketSharePct: 3.46 },
+      { dealerName: "Shivkiran Auto", omc: "IOCL", msVolumeKL: 94.0, hsdVolumeKL: 214.0, tmfVolumeKL: 308.0, msMarketSharePct: 2.85, hsdMarketSharePct: 3.99, tmfMarketSharePct: 3.56 },
+    ],
+  },
+  {
+    id: "TA-BPTP-MANJAVALI",
+    name: "Faridabad Retail SA — BPTP Manjavali",
+    month: "Jun",
+    dealers: [
+      { dealerName: "HR 87", omc: "BPCL" },
+      { dealerName: "NARWAT FILLING STATION", omc: "BPCL", msVolumeKL: 340.0, hsdVolumeKL: 190.0, tmfVolumeKL: 530.0, msMarketSharePct: 11.03, hsdMarketSharePct: 7.19, tmfMarketSharePct: 9.26 },
+      { dealerName: "SHREE SAI OIL COMPANY", omc: "BPCL", msVolumeKL: 307.0, hsdVolumeKL: 381.0, tmfVolumeKL: 688.0, msMarketSharePct: 9.96, hsdMarketSharePct: 14.41, tmfMarketSharePct: 12.02 },
+      { dealerName: "CH. BUDH SINGH F/STN KSK", omc: "IOCL" },
+      { dealerName: "SHIV SHAKTI FILLING STATION", omc: "IOCL", msVolumeKL: 222.0, hsdVolumeKL: 240.0, tmfVolumeKL: 462.0, msMarketSharePct: 7.2, hsdMarketSharePct: 9.08, tmfMarketSharePct: 8.07 },
+      { dealerName: "TWINKLE MOTOR", omc: "IOCL", msVolumeKL: 149.0, hsdVolumeKL: 147.0, tmfVolumeKL: 296.0, msMarketSharePct: 4.83, hsdMarketSharePct: 5.56, tmfMarketSharePct: 5.17 },
+    ],
+  },
+  {
+    id: "TA-BADKAL",
+    name: "Faridabad Retail SA — Badkal",
+    month: "Jun",
+    dealers: [
+      { dealerName: "MS/HSD HP MANU FUELS", omc: "HPCL", outletId: "OUT-41014874" },
+      { dealerName: "PT.MOHAN LAL & SONS FILLING STATION", omc: "BPCL", msVolumeKL: 156.0, hsdVolumeKL: 177.0, tmfVolumeKL: 333.0, msMarketSharePct: 7.84, hsdMarketSharePct: 8.86, tmfMarketSharePct: 8.35 },
+      { dealerName: "V.B. FUELS", omc: "BPCL", msVolumeKL: 215.0, hsdVolumeKL: 279.0, tmfVolumeKL: 494.0, msMarketSharePct: 10.8, hsdMarketSharePct: 13.96, tmfMarketSharePct: 12.38 },
+      { dealerName: "HTC BADKHAL LAKE FILLING STATION", omc: "IOCL", msVolumeKL: 107.0, hsdVolumeKL: 53.0, tmfVolumeKL: 160.0, msMarketSharePct: 5.37, hsdMarketSharePct: 2.65, tmfMarketSharePct: 4.01 },
+      { dealerName: "RK FILL  and  FLY CENTRE", omc: "IOCL", msVolumeKL: 200.0, hsdVolumeKL: 200.0, tmfVolumeKL: 400.0, msMarketSharePct: 10.05, hsdMarketSharePct: 10.01, tmfMarketSharePct: 10.03 },
+    ],
+  },
+  {
+    id: "TA-BALLABGARH-SOHNA-ROAD",
+    name: "Faridabad Retail SA — Ballabgarh Sohna road",
+    month: "Jun",
+    dealers: [
+      { dealerName: "HP OM SAI RAM OIL COMPANY", omc: "HPCL", outletId: "OUT-41010178", msVolumeKL: 40.5, hsdVolumeKL: 67.5, tmfVolumeKL: 108.0, msMarketSharePct: 1.38, hsdMarketSharePct: 0.89, tmfMarketSharePct: 1.02 },
+      { dealerName: "MS/HSD HP LAXMI FILLING STATION", omc: "HPCL", outletId: "OUT-41007896", msVolumeKL: 16.0, hsdVolumeKL: 68.0, tmfVolumeKL: 84.0, msMarketSharePct: 0.54, hsdMarketSharePct: 0.89, tmfMarketSharePct: 0.8 },
+      { dealerName: "MS/HSD KHEMKA HP", omc: "HPCL", outletId: "OUT-41009274", msVolumeKL: 100.0, hsdVolumeKL: 460.0, tmfVolumeKL: 560.0, msMarketSharePct: 3.4, hsdMarketSharePct: 6.05, tmfMarketSharePct: 5.31 },
+      { dealerName: "MSHSD INDER FILLING STATION", omc: "HPCL", outletId: "OUT-41009239" },
+      { dealerName: "MSHSD SHREE GIRIRAJ JI FILLING STAT", omc: "HPCL", outletId: "OUT-41007973", msVolumeKL: 45.0, hsdVolumeKL: 189.0, tmfVolumeKL: 234.0, msMarketSharePct: 1.53, hsdMarketSharePct: 2.49, tmfMarketSharePct: 2.22 },
+      { dealerName: "SHEELA SERVICE STATION", omc: "HPCL", outletId: "OUT-41056549", msVolumeKL: 55.0, hsdVolumeKL: 125.0, tmfVolumeKL: 180.0, msMarketSharePct: 1.87, hsdMarketSharePct: 1.64, tmfMarketSharePct: 1.71 },
+      { dealerName: "METRO FILLING STATION", omc: "BPCL", msVolumeKL: 27.0, hsdVolumeKL: 215.0, tmfVolumeKL: 242.0, msMarketSharePct: 0.92, hsdMarketSharePct: 2.83, tmfMarketSharePct: 2.3 },
+      { dealerName: "SHREE KHATUSHYAM JI FILLING STATION", omc: "BPCL", msVolumeKL: 88.0, hsdVolumeKL: 60.0, tmfVolumeKL: 148.0, msMarketSharePct: 2.99, hsdMarketSharePct: 0.79, tmfMarketSharePct: 1.4 },
+      { dealerName: "SHREE SHYAM FUELS", omc: "BPCL", msVolumeKL: 8.0, hsdVolumeKL: 60.0, tmfVolumeKL: 68.0, msMarketSharePct: 0.27, hsdMarketSharePct: 0.79, tmfMarketSharePct: 0.64 },
+      { dealerName: "APNA FILLING STATION", omc: "IOCL", msVolumeKL: 65.0, hsdVolumeKL: 83.0, tmfVolumeKL: 148.0, msMarketSharePct: 2.21, hsdMarketSharePct: 1.09, tmfMarketSharePct: 1.4 },
+      { dealerName: "ARAVALI PETROLEUM", omc: "IOCL", msVolumeKL: 36.0, hsdVolumeKL: 224.0, tmfVolumeKL: 260.0, msMarketSharePct: 1.22, hsdMarketSharePct: 2.95, tmfMarketSharePct: 2.47 },
+      { dealerName: "BHADANA FUELS(KSK)", omc: "IOCL", msVolumeKL: 25.0, hsdVolumeKL: 95.0, tmfVolumeKL: 120.0, msMarketSharePct: 0.85, hsdMarketSharePct: 1.25, tmfMarketSharePct: 1.14 },
+      { dealerName: "MALIK PETROLEUM", omc: "IOCL", msVolumeKL: 32.0, hsdVolumeKL: 136.0, tmfVolumeKL: 168.0, msMarketSharePct: 1.09, hsdMarketSharePct: 1.79, tmfMarketSharePct: 1.59 },
+      { dealerName: "NANGLA PETRO PUMP", omc: "IOCL", msVolumeKL: 70.0, hsdVolumeKL: 148.0, tmfVolumeKL: 218.0, msMarketSharePct: 2.38, hsdMarketSharePct: 1.95, tmfMarketSharePct: 2.07 },
+      { dealerName: "RAJSWAT FILLING STATION", omc: "IOCL", msVolumeKL: 12.0, hsdVolumeKL: 24.0, tmfVolumeKL: 36.0, msMarketSharePct: 0.41, hsdMarketSharePct: 0.32, tmfMarketSharePct: 0.34 },
+      { dealerName: "SANSKAR FILLING STATION (KSK)", omc: "IOCL", msVolumeKL: 65.0, hsdVolumeKL: 275.0, tmfVolumeKL: 340.0, msMarketSharePct: 2.21, hsdMarketSharePct: 3.62, tmfMarketSharePct: 3.22 },
+      { dealerName: "SHRI RADHE FILLING STATION (KSK)", omc: "IOCL", msVolumeKL: 71.0, hsdVolumeKL: 251.0, tmfVolumeKL: 322.0, msMarketSharePct: 2.41, hsdMarketSharePct: 3.3, tmfMarketSharePct: 3.05 },
+      { dealerName: "TEWATIA FUELS", omc: "IOCL", msVolumeKL: 220.0, hsdVolumeKL: 240.0, tmfVolumeKL: 460.0, msMarketSharePct: 7.48, hsdMarketSharePct: 3.16, tmfMarketSharePct: 4.36 },
+    ],
+  },
+  {
+    id: "TA-BALLABHGARH",
+    name: "Faridabad Retail SA — Ballabhgarh",
+    month: "Jun",
+    dealers: [
+      { dealerName: "M/s BISHAMBER FUEL STATION SIHI", omc: "HPCL", outletId: "OUT-41009886", msVolumeKL: 232.0, hsdVolumeKL: 92.0, tmfVolumeKL: 324.0, msMarketSharePct: 9.39, hsdMarketSharePct: 7.04, tmfMarketSharePct: 8.58 },
+      { dealerName: "ROYAL PETRO", omc: "HPCL", outletId: "OUT-41008223", msVolumeKL: 138.0, hsdVolumeKL: 34.0, tmfVolumeKL: 172.0, msMarketSharePct: 5.58, hsdMarketSharePct: 2.6, tmfMarketSharePct: 4.55 },
+      { dealerName: "SHREE SHYAM ENERGY", omc: "BPCL", msVolumeKL: 36.0, hsdVolumeKL: 110.0, tmfVolumeKL: 146.0, msMarketSharePct: 1.46, hsdMarketSharePct: 8.42, tmfMarketSharePct: 3.86 },
+      { dealerName: "TULIP SERVICE STATION", omc: "BPCL", msVolumeKL: 105.0, hsdVolumeKL: 45.0, tmfVolumeKL: 150.0, msMarketSharePct: 4.25, hsdMarketSharePct: 3.45, tmfMarketSharePct: 3.97 },
+      { dealerName: "GAURAV FILLING STATION", omc: "IOCL", msVolumeKL: 215.0, hsdVolumeKL: 29.0, tmfVolumeKL: 244.0, msMarketSharePct: 8.7, hsdMarketSharePct: 2.22, tmfMarketSharePct: 6.46 },
+      { dealerName: "MARUTI MOTORS - FARIDABAD", omc: "IOCL", msVolumeKL: 145.0, hsdVolumeKL: 155.0, tmfVolumeKL: 300.0, msMarketSharePct: 5.87, hsdMarketSharePct: 11.87, tmfMarketSharePct: 7.94 },
+    ],
+  },
+  {
+    id: "TA-DEEG-PYALA",
+    name: "Faridabad Retail SA — Deeg Pyala",
+    month: "Jun",
+    dealers: [
+      { dealerName: "HP SANJAY FILLING STATION", omc: "HPCL", outletId: "OUT-41011132", msVolumeKL: 50.0, hsdVolumeKL: 70.0, tmfVolumeKL: 120.0, msMarketSharePct: 6.61, hsdMarketSharePct: 4.62, tmfMarketSharePct: 5.29 },
+      { dealerName: "HP SATYAM FILLING STATION", omc: "HPCL", outletId: "OUT-41012846", msVolumeKL: 20.0, hsdVolumeKL: 40.0, tmfVolumeKL: 60.0, msMarketSharePct: 2.65, hsdMarketSharePct: 2.64, tmfMarketSharePct: 2.64 },
+      { dealerName: "BP-PIYALA", omc: "BPCL", msVolumeKL: 50.1, hsdVolumeKL: 129.6, tmfVolumeKL: 179.7, msMarketSharePct: 6.63, hsdMarketSharePct: 8.56, tmfMarketSharePct: 7.92 },
+      { dealerName: "FAHEEM FILLING STATION", omc: "BPCL", msVolumeKL: 20.0, hsdVolumeKL: 76.0, tmfVolumeKL: 96.0, msMarketSharePct: 2.65, hsdMarketSharePct: 5.02, tmfMarketSharePct: 4.23 },
+      { dealerName: "PREM RATAN FILLING STATION (KSK)", omc: "IOCL", msVolumeKL: 108.0, hsdVolumeKL: 168.0, tmfVolumeKL: 276.0, msMarketSharePct: 14.28, hsdMarketSharePct: 11.1, tmfMarketSharePct: 12.16 },
+    ],
+  },
+  {
+    id: "TA-IMT",
+    name: "Faridabad Retail SA — IMT",
+    month: "Jun",
+    dealers: [
+      { dealerName: "BP 69", omc: "BPCL", msVolumeKL: 455.0, hsdVolumeKL: 385.4, tmfVolumeKL: 840.4, msMarketSharePct: 17.79, hsdMarketSharePct: 13.9, tmfMarketSharePct: 15.77 },
+      { dealerName: "MONIKA FILLING STATION", omc: "BPCL", msVolumeKL: 58.0, hsdVolumeKL: 152.0, tmfVolumeKL: 210.0, msMarketSharePct: 2.27, hsdMarketSharePct: 5.48, tmfMarketSharePct: 3.94 },
+      { dealerName: "BABA MOHAN RAM FILLING STATION", omc: "IOCL", msVolumeKL: 186.0, hsdVolumeKL: 114.0, tmfVolumeKL: 300.0, msMarketSharePct: 7.27, hsdMarketSharePct: 4.11, tmfMarketSharePct: 5.63 },
+      { dealerName: "MOHAN FILLING STATION KSK", omc: "IOCL", msVolumeKL: 94.5, hsdVolumeKL: 211.5, tmfVolumeKL: 306.0, msMarketSharePct: 3.7, hsdMarketSharePct: 7.63, tmfMarketSharePct: 5.74 },
+      { dealerName: "RADHA BALLABH FILLING STATION (KSK)", omc: "IOCL" },
+      { dealerName: "SHRI KRISHNA FILLING STATION (KSK)", omc: "IOCL", msVolumeKL: 44.0, hsdVolumeKL: 64.0, tmfVolumeKL: 108.0, msMarketSharePct: 1.72, hsdMarketSharePct: 2.31, tmfMarketSharePct: 2.03 },
+    ],
+  },
+  {
+    id: "TA-MANGER",
+    name: "Faridabad Retail SA — Manger",
+    month: "Jun",
+    dealers: [
+      { dealerName: "HP AVIJIT ENTERPRISES", omc: "HPCL", outletId: "OUT-41014459", msVolumeKL: 120.0, hsdVolumeKL: 60.0, tmfVolumeKL: 180.0, msMarketSharePct: 6.0, hsdMarketSharePct: 3.96, tmfMarketSharePct: 5.12 },
+      { dealerName: "HATRICK FILLING STATION", omc: "IOCL" },
+      { dealerName: "HTC ARAVALI GOLF COURSE", omc: "IOCL", msVolumeKL: 277.0, hsdVolumeKL: 147.0, tmfVolumeKL: 424.0, msMarketSharePct: 13.86, hsdMarketSharePct: 9.7, tmfMarketSharePct: 12.07 },
+      { dealerName: "Sansad Shaheed BS Adhana FuelC", omc: "IOCL", msVolumeKL: 64.0, hsdVolumeKL: 32.0, tmfVolumeKL: 96.0, msMarketSharePct: 3.2, hsdMarketSharePct: 2.11, tmfMarketSharePct: 2.73 },
+      { dealerName: "UNITED PETROLEUM", omc: "IOCL", msVolumeKL: 185.0, hsdVolumeKL: 235.0, tmfVolumeKL: 420.0, msMarketSharePct: 9.25, hsdMarketSharePct: 15.51, tmfMarketSharePct: 11.95 },
+    ],
+  },
+  {
+    id: "TA-MOHNA",
+    name: "Faridabad Retail SA — Mohna",
+    month: "Jun",
+    dealers: [
+      { dealerName: "GAYATRI FILLING STATION", omc: "HPCL", outletId: "OUT-41014421" },
+      { dealerName: "KALKA KISAN SEWA KENDRA", omc: "IOCL", msVolumeKL: 33.0, hsdVolumeKL: 51.0, tmfVolumeKL: 84.0, msMarketSharePct: 33.33, hsdMarketSharePct: 33.33, tmfMarketSharePct: 33.33 },
+    ],
+  },
+  {
+    id: "TA-NEELAM-FLYOVER",
+    name: "Faridabad Retail SA — Neelam flyover",
+    month: "Jun",
+    dealers: [
+      { dealerName: "HP SERVICE CENTER FARIDABAD", omc: "HPCL", outletId: "OUT-41068065", msVolumeKL: 570.0, hsdVolumeKL: 198.0, tmfVolumeKL: 768.0, msMarketSharePct: 6.17, hsdMarketSharePct: 2.67, tmfMarketSharePct: 4.61 },
+      { dealerName: "RAJ AUTO SERVICE", omc: "HPCL", outletId: "OUT-41056957", msVolumeKL: 355.0, hsdVolumeKL: 585.0, tmfVolumeKL: 940.0, msMarketSharePct: 3.84, hsdMarketSharePct: 7.89, tmfMarketSharePct: 5.64 },
+      { dealerName: "SUNDER SERVICE STATION", omc: "HPCL", outletId: "OUT-41056574", msVolumeKL: 490.0, hsdVolumeKL: 696.0, tmfVolumeKL: 1186.0, msMarketSharePct: 5.3, hsdMarketSharePct: 9.39, tmfMarketSharePct: 7.12 },
+      { dealerName: "THE AUTO SUPPLY COMPANY", omc: "HPCL", outletId: "OUT-41056955", msVolumeKL: 620.0, hsdVolumeKL: 260.0, tmfVolumeKL: 880.0, msMarketSharePct: 6.71, hsdMarketSharePct: 3.51, tmfMarketSharePct: 5.28 },
+      { dealerName: "TARA CHAND SALUJA & SONS", omc: "BPCL", msVolumeKL: 262.0, hsdVolumeKL: 102.0, tmfVolumeKL: 364.0, msMarketSharePct: 2.83, hsdMarketSharePct: 1.38, tmfMarketSharePct: 2.19 },
+      { dealerName: "AUTO CARE - FARIDABAD", omc: "IOCL", msVolumeKL: 297.0, hsdVolumeKL: 393.0, tmfVolumeKL: 690.0, msMarketSharePct: 3.21, hsdMarketSharePct: 5.3, tmfMarketSharePct: 4.14 },
+      { dealerName: "CITY MOTORS", omc: "IOCL", msVolumeKL: 419.0, hsdVolumeKL: 293.0, tmfVolumeKL: 712.0, msMarketSharePct: 4.53, hsdMarketSharePct: 3.95, tmfMarketSharePct: 4.28 },
+    ],
+  },
+  {
+    id: "TA-PALLA-SEHATPUR-TO-SECTOR-29",
+    name: "Faridabad Retail SA — PALLA SEHATPUR TO SECTOR 29",
+    month: "Jun",
+    dealers: [
+      { dealerName: "AMAR FILLING STATION", omc: "IOCL", msVolumeKL: 388.0, hsdVolumeKL: 240.0, tmfVolumeKL: 628.0, msMarketSharePct: 23.69, hsdMarketSharePct: 28.92, tmfMarketSharePct: 25.45 },
+      { dealerName: "NUMBARDAR F/STATION KSK", omc: "IOCL", msVolumeKL: 125.0, hsdVolumeKL: 55.0, tmfVolumeKL: 180.0, msMarketSharePct: 7.63, hsdMarketSharePct: 6.63, tmfMarketSharePct: 7.29 },
+    ],
+  },
+  {
+    id: "TA-PALI",
+    name: "Faridabad Retail SA — Pali",
+    month: "Jun",
+    dealers: [
+      { dealerName: "GURU MAA VARSHA FILLING STATION", omc: "BPCL", msVolumeKL: 44.0, hsdVolumeKL: 148.0, tmfVolumeKL: 192.0, msMarketSharePct: 4.95, hsdMarketSharePct: 13.64, tmfMarketSharePct: 9.73 },
+      { dealerName: "KARAN FILLING STATION", omc: "IOCL", msVolumeKL: 65.0, hsdVolumeKL: 115.0, tmfVolumeKL: 180.0, msMarketSharePct: 7.31, hsdMarketSharePct: 10.6, tmfMarketSharePct: 9.12 },
+      { dealerName: "KAVYA FILLING STATION", omc: "IOCL", msVolumeKL: 34.0, hsdVolumeKL: 110.0, tmfVolumeKL: 144.0, msMarketSharePct: 3.82, hsdMarketSharePct: 10.14, tmfMarketSharePct: 7.29 },
+      { dealerName: "SERVELL SERVICE STATION", omc: "IOCL" },
+      { dealerName: "SHRI SINGHRAM PETRO FILLING STATION", omc: "IOCL", msVolumeKL: 133.0, hsdVolumeKL: 63.0, tmfVolumeKL: 196.0, msMarketSharePct: 14.96, hsdMarketSharePct: 5.81, tmfMarketSharePct: 9.93 },
+      { dealerName: "Sudha Service Station.", omc: "IOCL", msVolumeKL: 16.0, hsdVolumeKL: 20.0, tmfVolumeKL: 36.0, msMarketSharePct: 1.8, hsdMarketSharePct: 1.84, tmfMarketSharePct: 1.82 },
+    ],
+  },
+  {
+    id: "TA-SURAJKUND-ROAD",
+    name: "Faridabad Retail SA — Surajkund road",
+    month: "Jun",
+    dealers: [
+      { dealerName: "NAHAR FUELS", omc: "BPCL", msVolumeKL: 155.0, hsdVolumeKL: 53.0, tmfVolumeKL: 208.0, msMarketSharePct: 4.78, hsdMarketSharePct: 3.1, tmfMarketSharePct: 4.2 },
+      { dealerName: "GANPATI MOTORS", omc: "IOCL", msVolumeKL: 290.0, hsdVolumeKL: 170.0, tmfVolumeKL: 460.0, msMarketSharePct: 8.95, hsdMarketSharePct: 9.93, tmfMarketSharePct: 9.29 },
+      { dealerName: "MOTOR FUELS", omc: "IOCL", msVolumeKL: 275.0, hsdVolumeKL: 145.0, tmfVolumeKL: 420.0, msMarketSharePct: 8.49, hsdMarketSharePct: 8.47, tmfMarketSharePct: 8.48 },
+      { dealerName: "Sun F/S", omc: "IOCL", msVolumeKL: 340.0, hsdVolumeKL: 200.0, tmfVolumeKL: 540.0, msMarketSharePct: 10.49, hsdMarketSharePct: 11.68, tmfMarketSharePct: 10.9 },
+    ],
+  },
+  {
+    id: "TA-TIGAON",
+    name: "Faridabad Retail SA — TIGAON",
+    month: "Jun",
+    dealers: [
+      { dealerName: "M/s SHREE KRISHNA FUEL PLUS  GHAROR", omc: "HPCL", outletId: "OUT-41009898", msVolumeKL: 35.0, hsdVolumeKL: 45.0, tmfVolumeKL: 80.0, msMarketSharePct: 2.58, hsdMarketSharePct: 2.34, tmfMarketSharePct: 2.44 },
+      { dealerName: "MSHSD SHRI RAMA KRISHNA FILLING STA", omc: "HPCL", outletId: "OUT-41008596", msVolumeKL: 80.0, hsdVolumeKL: 120.0, tmfVolumeKL: 200.0, msMarketSharePct: 5.89, hsdMarketSharePct: 6.25, tmfMarketSharePct: 6.1 },
+      { dealerName: "SHRI RAGHUVAR FILLING STATION", omc: "BPCL", msVolumeKL: 13.0, hsdVolumeKL: 13.0, tmfVolumeKL: 26.0, msMarketSharePct: 0.96, hsdMarketSharePct: 0.68, tmfMarketSharePct: 0.79 },
+      { dealerName: "DURGA FILLING STATION KSK", omc: "IOCL", msVolumeKL: 24.0, hsdVolumeKL: 34.0, tmfVolumeKL: 58.0, msMarketSharePct: 1.77, hsdMarketSharePct: 1.77, tmfMarketSharePct: 1.77 },
+      { dealerName: "JAI KISSAN FILLING STN.", omc: "IOCL", msVolumeKL: 40.0, hsdVolumeKL: 68.0, tmfVolumeKL: 108.0, msMarketSharePct: 2.94, hsdMarketSharePct: 3.54, tmfMarketSharePct: 3.29 },
+      { dealerName: "Raj Filling Station ( KSK )", omc: "IOCL", msVolumeKL: 18.0, hsdVolumeKL: 54.0, tmfVolumeKL: 72.0, msMarketSharePct: 1.32, hsdMarketSharePct: 2.81, tmfMarketSharePct: 2.2 },
+      { dealerName: "RAMESH FILLING STATION", omc: "IOCL", msVolumeKL: 50.0, hsdVolumeKL: 78.0, tmfVolumeKL: 128.0, msMarketSharePct: 3.68, hsdMarketSharePct: 4.06, tmfMarketSharePct: 3.9 },
+      { dealerName: "SARASWATI FILLING STATION TIGAON", omc: "IOCL", msVolumeKL: 76.0, hsdVolumeKL: 80.0, tmfVolumeKL: 156.0, msMarketSharePct: 5.59, hsdMarketSharePct: 4.16, tmfMarketSharePct: 4.76 },
+      { dealerName: "SHREE GANPATIJI FILLING STATION", omc: "IOCL", msVolumeKL: 12.0, hsdVolumeKL: 24.0, tmfVolumeKL: 36.0, msMarketSharePct: 0.88, hsdMarketSharePct: 1.25, tmfMarketSharePct: 1.1 },
+      { dealerName: "Swastik Petroleum", omc: "IOCL", msVolumeKL: 20.0, hsdVolumeKL: 16.0, tmfVolumeKL: 36.0, msMarketSharePct: 1.47, hsdMarketSharePct: 0.83, tmfMarketSharePct: 1.1 },
+      { dealerName: "Yash Kissan Sewa Kender", omc: "IOCL", msVolumeKL: 55.0, hsdVolumeKL: 65.0, tmfVolumeKL: 120.0, msMarketSharePct: 4.05, hsdMarketSharePct: 3.38, tmfMarketSharePct: 3.66 },
     ],
   },
 ];
 
-const TRADING_AREA_OUTLET_IDS = new Set(["OUT-41068065", "OUT-41056957", "OUT-41056574", "OUT-41056955"]);
+const TRADING_AREA_BY_OUTLET_ID: Record<string, string> = {
+  "OUT-41015064": "TA-148N-NA",
+  "OUT-41014439": "TA-19-LHS",
+  "OUT-41028014": "TA-19-LHS",
+  "OUT-41009252": "TA-19-RHS",
+  "OUT-41027708": "TA-19-RHS",
+  "OUT-41014874": "TA-BADKAL",
+  "OUT-41010178": "TA-BALLABGARH-SOHNA-ROAD",
+  "OUT-41007896": "TA-BALLABGARH-SOHNA-ROAD",
+  "OUT-41009274": "TA-BALLABGARH-SOHNA-ROAD",
+  "OUT-41009239": "TA-BALLABGARH-SOHNA-ROAD",
+  "OUT-41007973": "TA-BALLABGARH-SOHNA-ROAD",
+  "OUT-41056549": "TA-BALLABGARH-SOHNA-ROAD",
+  "OUT-41009886": "TA-BALLABHGARH",
+  "OUT-41008223": "TA-BALLABHGARH",
+  "OUT-41011132": "TA-DEEG-PYALA",
+  "OUT-41012846": "TA-DEEG-PYALA",
+  "OUT-41014459": "TA-MANGER",
+  "OUT-41014421": "TA-MOHNA",
+  "OUT-41068065": "TA-NEELAM-FLYOVER",
+  "OUT-41056957": "TA-NEELAM-FLYOVER",
+  "OUT-41056574": "TA-NEELAM-FLYOVER",
+  "OUT-41056955": "TA-NEELAM-FLYOVER",
+  "OUT-41009898": "TA-TIGAON",
+  "OUT-41008596": "TA-TIGAON",
+};
 for (const outlet of seedOutlets) {
-  if (TRADING_AREA_OUTLET_IDS.has(outlet.id)) {
-    outlet.tradingAreaId = "TA-NIT-BATACHOWK";
-  }
+  const taId = TRADING_AREA_BY_OUTLET_ID[outlet.id];
+  if (taId) outlet.tradingAreaId = taId;
 }
 
 // Real month-wise LY vs CY product comparison (MS/HSD/LUBE/POWER/DEF) from HPCL's DSR

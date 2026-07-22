@@ -21,8 +21,11 @@ export function defaultFeasibilityReportForm(c: DealerCase): FeasibilityReportFo
     ? tradingArea.dealers.map((d) => ({
         roName: d.dealerName,
         oilCo: omcAbbrev(d.omc),
-        msKLPM: d.msVolumeKL,
-        hsdKLPM: d.hsdVolumeKL,
+        // A few ROs in the real Trading Area report have no figures on file for any month this
+        // year — prefilled as 0 here (this is a prefill the SO reviews/edits before submitting,
+        // same as the free-text entry path below), not asserted as a verified zero.
+        msKLPM: d.msVolumeKL ?? 0,
+        hsdKLPM: d.hsdVolumeKL ?? 0,
       }))
     : [];
 

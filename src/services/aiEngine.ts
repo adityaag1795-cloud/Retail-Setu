@@ -253,6 +253,7 @@ class TemplateAiEngine implements AiEngine {
     ].join("\n");
   }
 
+  /** Quotes every matched clause's real text (not just the top one) so a question spanning more than one provision gets all of them, not just the single best-scoring match. */
   private policyAnswer(ctx: Record<string, unknown>): string {
     const { question, matchedClauses } = ctx as {
       question: string;
@@ -261,14 +262,10 @@ class TemplateAiEngine implements AiEngine {
     if (matchedClauses.length === 0) {
       return `No matching clause found in the loaded policy set for: "${question}". Load more policy documents into the Knowledge Centre to widen coverage.`;
     }
-    const best = matchedClauses[0]!;
-    return [
-      `Basis ${best.documentTitle}, clause ${best.clauseNumber} (${best.heading}):`,
-      `"${best.text}"`,
-      matchedClauses.length > 1 ? `\n${matchedClauses.length - 1} other related clause(s) also matched — see references below.` : "",
-    ]
-      .join("\n")
-      .trim();
+    const blocks = matchedClauses.map(
+      (c) => `Basis ${c.documentTitle}, clause ${c.clauseNumber} (${c.heading}):\n"${c.text}"`,
+    );
+    return blocks.join("\n\n");
   }
 
   private analyticsAnswer(ctx: Record<string, unknown>): string {

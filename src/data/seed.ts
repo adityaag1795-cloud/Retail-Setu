@@ -3115,10 +3115,10 @@ for (const outlet of seedOutlets) {
 // ---------------------------------------------------------------------------
 
 export const seedTeam: TeamMember[] = [
-  { id: "TM-SO-ABHISHEK", name: "Abhishek Pratap Singh (Sr. Area Sales Manager, Retail-Faridabad)", role: "SO", salesArea: SALES_AREA },
-  { id: "TM-RO-VENUGOPAL", name: "Medikonda Venu Gopal (DGM, Retail Region)", role: "RO", salesArea: SALES_AREA },
-  { id: "TM-RO-DEVENDRA", name: "Devendra Dev Sharma (GM, Network Planning)", role: "RO", salesArea: SALES_AREA },
-  { id: "TM-HEAD-AVINASH", name: "Avinash Jain (Chief General Manager, Retail)", role: "RetailHead", salesArea: SALES_AREA },
+  { id: "TM-SO-ABHISHEK", name: "Sr. Area Sales Manager, Retail-Faridabad", role: "SO", salesArea: SALES_AREA },
+  { id: "TM-RO-VENUGOPAL", name: "DGM, Retail Region", role: "RO", salesArea: SALES_AREA },
+  { id: "TM-RO-DEVENDRA", name: "GM, Network Planning", role: "RO", salesArea: SALES_AREA },
+  { id: "TM-HEAD-AVINASH", name: "Chief General Manager, Retail", role: "RetailHead", salesArea: SALES_AREA },
   { id: "TM-DEALER-KAVITA", name: "Kavita Adhana (Dealer, Gayatri Filling Station)", role: "Dealer", salesArea: SALES_AREA },
   // Module 7 stakeholder seats a dealer request can be forwarded to. No real named individual was
   // supplied for these roles, so the seat itself (not a fabricated person) is the name — replace

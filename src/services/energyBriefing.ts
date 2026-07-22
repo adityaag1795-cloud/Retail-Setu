@@ -27,7 +27,12 @@ function decodeXmlEntities(s: string): string {
 
 export async function fetchCrudeRate(): Promise<CrudeRateResult> {
   try {
-    const res = await fetch("https://stooq.com/q/l/?s=cl.f&f=sd2t2ohlcv&h&e=csv", {
+    // The old "/q/l/" live-quote-snapshot endpoint 404s (confirmed against the real host — Stooq
+    // appears to have retired/moved it). This is Stooq's documented historical-daily CSV endpoint
+    // (the one pandas-datareader and similar tools use), so it returns the latest completed
+    // trading day's close rather than an intraday tick — an honest end-of-day figure, not a
+    // fabricated "live" one.
+    const res = await fetch("https://stooq.com/q/d/l/?s=cl.f&i=d", {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return { ok: false, error: `Stooq returned HTTP ${res.status}` };
@@ -35,18 +40,18 @@ export async function fetchCrudeRate(): Promise<CrudeRateResult> {
     const lines = text.trim().split("\n");
     if (lines.length < 2) return { ok: false, error: "Unexpected response format from Stooq (no data row)" };
     const header = lines[0]!.split(",").map((h: string) => h.trim().toLowerCase());
-    const row = lines[1]!.split(",");
+    const lastRow = lines[lines.length - 1]!.split(",");
     const dateIdx = header.indexOf("date");
     const closeIdx = header.indexOf("close");
-    if (closeIdx === -1 || row[closeIdx] === undefined) return { ok: false, error: "Unexpected response format from Stooq (no close column)" };
-    const priceUsd = Number(row[closeIdx]);
+    if (closeIdx === -1 || lastRow[closeIdx] === undefined) return { ok: false, error: "Unexpected response format from Stooq (no close column)" };
+    const priceUsd = Number(lastRow[closeIdx]);
     if (!Number.isFinite(priceUsd) || priceUsd <= 0) return { ok: false, error: "Stooq returned a non-numeric or zero price (market likely closed/no data)" };
     return {
       ok: true,
       symbol: "WTI Crude (CL.F, continuous futures)",
       priceUsd,
-      asOf: dateIdx !== -1 ? row[dateIdx] ?? "" : "",
-      source: "stooq.com",
+      asOf: dateIdx !== -1 ? lastRow[dateIdx] ?? "" : "",
+      source: "stooq.com (latest completed trading day's close)",
     };
   } catch (err) {
     return { ok: false, error: `Live crude-rate fetch failed: ${(err as Error).message}` };

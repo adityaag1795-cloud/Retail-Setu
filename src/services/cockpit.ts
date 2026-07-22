@@ -1,5 +1,5 @@
 import { store } from "../store.js";
-import type { CalendarEvent, CockpitQuadrant, TaskItem } from "../types.js";
+import type { CockpitQuadrant, TaskItem } from "../types.js";
 
 export interface CompletedLogItem {
   id: string;
@@ -36,44 +36,6 @@ export function quadrantBoard() {
     board[classify(task)].tasks.push(task);
   }
   return board;
-}
-
-/** Derives a town/circuit-wise pending-inspection & meeting calendar from live DealerCase state. */
-export function circuitCalendar(): CalendarEvent[] {
-  const events: CalendarEvent[] = [];
-  for (const c of store.dealerCases.values()) {
-    const town = c.stretchName;
-    // ASC/LEC/FVC evaluate a NEW site's suitability — only real for a NewSiteDevelopment case.
-    // A Resitement case is for an already-commissioned outlet, so there's no real site to
-    // scrutinise and no genuine "pending" inspection to chase here.
-    if (c.caseType === "NewSiteDevelopment") {
-      if (!c.inspections.asc) events.push(mkEvent(c.id, town, c.salesArea, "ASC", `ASC pending — ${c.stretchName}`));
-      if (!c.inspections.lec) events.push(mkEvent(c.id, town, c.salesArea, "LEC", `LEC pending — ${c.stretchName}`));
-      if (!c.inspections.fvc) events.push(mkEvent(c.id, town, c.salesArea, "FVC", `FVC pending — ${c.stretchName}`));
-    }
-    for (const m of c.milestones) {
-      if (m.status === "Pending" || m.status === "Stuck") {
-        events.push(mkEvent(c.id, town, c.salesArea, "NOC-Followup", `${m.label} — ${c.stretchName}`));
-      }
-    }
-  }
-  return events;
-}
-
-let seq = 0;
-function mkEvent(caseId: string, town: string, salesArea: string, type: CalendarEvent["type"], title: string): CalendarEvent {
-  seq += 1;
-  const date = new Date();
-  date.setDate(date.getDate() + (seq % 7));
-  return {
-    id: `CAL-${seq}`,
-    date: date.toISOString().slice(0, 10),
-    type,
-    title,
-    salesArea,
-    town,
-    linkedCaseId: caseId,
-  };
 }
 
 /**
@@ -115,7 +77,6 @@ export function completedLog(): { date: string; items: CompletedLogItem[] }[] {
 export function cockpitSnapshot() {
   return {
     quadrants: quadrantBoard(),
-    calendar: circuitCalendar(),
     completedLog: completedLog(),
     generatedAt: new Date().toISOString(),
   };

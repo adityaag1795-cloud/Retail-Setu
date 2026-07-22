@@ -2504,7 +2504,7 @@ async function renderCockpit() {
     app().innerHTML = `
     <section class="panel">
       <h2>SO Cockpit</h2>
-      <p class="muted">Guiding module — tasks from Modules 1-4, divided into four quadrants (7 Habits time-management matrix), plus a circuit-wise pending calendar.</p>
+      <p class="muted">Guiding module — tasks from Modules 1-4, divided into four quadrants (7 Habits time-management matrix).</p>
 
       <h3>Energy sector news &amp; crude rate <span class="muted">(live, re-fetched on every refresh)</span></h3>
       <div id="energy-briefing">${renderEnergyBriefing(energy)}</div>
@@ -2521,15 +2521,6 @@ async function renderCockpit() {
 
       <h4>Suggested tour <span class="muted">(AI-prioritised, real signals)</span></h4>
       ${renderTourCircuitSection(tourCircuit.stops)}
-
-      <h3>Circuit / town-wise pending calendar</h3>
-      <table class="table">
-        <thead><tr><th>Date</th><th>Type</th><th>Title</th><th>Sales Area</th></tr></thead>
-        <tbody>${snap.calendar
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .map((e) => `<tr><td>${e.date}</td><td>${escapeHtml(e.type)}</td><td>${e.linkedCaseId ? `<a href="#/cases/${e.linkedCaseId}">${escapeHtml(e.title)}</a>` : escapeHtml(e.title)}</td><td>${escapeHtml(e.salesArea)}</td></tr>`)
-        .join("") || "<tr><td colspan='4'>Calendar is clear.</td></tr>"}</tbody>
-      </table>
 
       <h3>Completed work — calendar record <span class="muted">(dropped off the to-do lists above the moment they're marked Done)</span></h3>
       <label>Browse by date

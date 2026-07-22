@@ -1010,18 +1010,6 @@ export interface MemoryNote {
 // Module 5 — SO Cockpit
 // ---------------------------------------------------------------------------
 
-export type CalendarEventType = "LEC" | "FVC" | "ASC" | "Meeting" | "Deadline" | "Forecast" | "MNL" | "NOC-Followup";
-
-export interface CalendarEvent {
-  id: ID;
-  date: string;
-  type: CalendarEventType;
-  title: string;
-  salesArea: string;
-  town: string;
-  linkedCaseId?: ID;
-}
-
 export type CockpitQuadrant = "DoFirst" | "Schedule" | "Delegate" | "Eliminate";
 
 // ---------------------------------------------------------------------------

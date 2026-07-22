@@ -622,12 +622,12 @@ function renderTrafficSection(traffic: any): string {
     }
     <h4>DU (dispensing unit) status</h4>
     <table class="table">
-      <thead><tr><th>Pump</th><th>Nozzle</th><th>Product</th><th>Transactions</th><th>Last transaction</th><th>Status</th></tr></thead>
+      <thead><tr><th>Pump</th><th>Nozzle</th><th>Transactions</th><th>Last transaction</th><th>Status</th></tr></thead>
       <tbody>
         ${traffic.nozzles
           .map(
             (n: any) =>
-              `<tr><td>${escapeHtml(n.pumpNo)}</td><td>${escapeHtml(n.nozzleNo)}</td><td>${n.product ? escapeHtml(n.product) : '<span class="muted">not on file</span>'}</td><td>${n.transactionCount}</td><td>${n.lastTransactionAt.slice(0, 10)}</td><td>${n.possiblyInactive ? '<span class="badge badge--escalated">Possibly inactive</span>' : '<span class="badge badge--resolved">Active</span>'}</td></tr>`,
+              `<tr><td>${escapeHtml(n.pumpNo)}</td><td>${escapeHtml(n.nozzleNo)}</td><td>${n.transactionCount}</td><td>${n.lastTransactionAt.slice(0, 10)}</td><td>${n.possiblyInactive ? '<span class="badge badge--escalated">Possibly inactive</span>' : '<span class="badge badge--resolved">Active</span>'}</td></tr>`,
           )
           .join("")}
       </tbody>

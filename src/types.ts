@@ -945,6 +945,8 @@ export interface TaskItem {
   important: boolean;
   linkedModule?: "Outlet" | "DealerCase" | "Analytics" | "Knowledge" | "DealerRequest";
   linkedRecordId?: ID;
+  /** External portal to redirect to when the task title is clicked (e.g. the CRM/forecast system the task is about) — takes priority over linkedModule. */
+  externalUrl?: string;
   createdAt: string;
   /** Set the moment status transitions to "Done" — the record of what was done, and when, for the Cockpit's completed-work calendar. */
   completedAt?: string;

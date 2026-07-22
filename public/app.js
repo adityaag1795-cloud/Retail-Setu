@@ -191,6 +191,8 @@ function linkedRecordHref(linkedModule, linkedRecordId) {
     }
 }
 function taskTitleHtml(t) {
+    if (t.externalUrl)
+        return `<a href="${escapeHtml(t.externalUrl)}" target="_blank" rel="noopener">${escapeHtml(t.title)}</a>`;
     const href = linkedRecordHref(t.linkedModule, t.linkedRecordId);
     return href ? `<a href="${href}">${escapeHtml(t.title)}</a>` : escapeHtml(t.title);
 }

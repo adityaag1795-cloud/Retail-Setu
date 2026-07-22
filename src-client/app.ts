@@ -225,7 +225,8 @@ function linkedRecordHref(linkedModule?: string, linkedRecordId?: string): strin
   }
 }
 
-function taskTitleHtml(t: { title: string; linkedModule?: string; linkedRecordId?: string }): string {
+function taskTitleHtml(t: { title: string; linkedModule?: string; linkedRecordId?: string; externalUrl?: string }): string {
+  if (t.externalUrl) return `<a href="${escapeHtml(t.externalUrl)}" target="_blank" rel="noopener">${escapeHtml(t.title)}</a>`;
   const href = linkedRecordHref(t.linkedModule, t.linkedRecordId);
   return href ? `<a href="${href}">${escapeHtml(t.title)}</a>` : escapeHtml(t.title);
 }

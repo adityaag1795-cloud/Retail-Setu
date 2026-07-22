@@ -41,6 +41,7 @@ export function registerTeamRoutes(router: Router) {
       important: body.important ?? false,
       linkedModule: body.linkedModule,
       linkedRecordId: body.linkedRecordId,
+      externalUrl: body.externalUrl,
       createdAt: new Date().toISOString(),
     };
     store.tasks.set(task.id, task);

@@ -2179,7 +2179,26 @@ function wireCaseHandlers(c: any) {
         const control = form.elements.namedItem(field) as HTMLInputElement | HTMLSelectElement | null;
         if (control) control.value = String(value);
       }
-      if (Object.keys(result.fields).length) toast(`Pre-filled ${Object.keys(result.fields).length} field(s) — review before saving`);
+      const fieldCount = Object.keys(result.fields).length;
+      // Extraction only pre-fills the on-screen form — it deliberately does not commit anything
+      // to the case (see formExtraction.ts). Nothing downstream (ASC/LEC/FVC/file notes) sees this
+      // data until the SO reviews it and clicks "Save application" below, so make that step
+      // impossible to miss rather than a silent scroll-past.
+      form.scrollIntoView({ behavior: "smooth", block: "start" });
+      const saveBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+      if (saveBtn) {
+        saveBtn.style.outline = "3px solid var(--warn)";
+        saveBtn.style.outlineOffset = "2px";
+        setTimeout(() => {
+          saveBtn.style.outline = "";
+          saveBtn.style.outlineOffset = "";
+        }, 5000);
+      }
+      toast(
+        fieldCount
+          ? `Pre-filled ${fieldCount} field(s) below — review them, then click "Save application" to apply them (nothing is saved yet)`
+          : `No fields recognised in this upload — fill the Application Form below manually, then click "Save application"`,
+      );
     }),
   );
 

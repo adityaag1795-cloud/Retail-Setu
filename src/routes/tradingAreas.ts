@@ -26,9 +26,12 @@ export function registerTradingAreaRoutes(router: Router) {
       ? reportedVolumes.reduce((sum, v) => sum + v, 0) / reportedVolumes.length
       : null;
 
+    // Deliberately every outlet of ours here, not just the prototype's curated/visible set — this
+    // is a real competitive-risk signal (an outlet genuinely losing share in its own catchment),
+    // and hiding a real underperformer just because it's outside the demo's curated 11 would
+    // suppress exactly the finding this feature exists to surface.
     const dealerByOutletId = new Map(snapshot.dealers.filter((d) => d.outletId).map((d) => [d.outletId!, d]));
-    const outlets = store
-      .visibleOutlets()
+    const outlets = [...store.outlets.values()]
       .filter((o) => o.tradingAreaId === snapshot.id)
       .map((o) => ({ ...o, tmfVolumeKL: dealerByOutletId.get(o.id)?.tmfVolumeKL }))
       // Only outlets with a real reported volume that is actually below the average — an outlet

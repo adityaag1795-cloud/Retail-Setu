@@ -598,6 +598,29 @@ async function renderOutletDetail(id: string) {
   wireOutletModernisationHandlers(o.id, report.modernisationRequests);
 }
 
+/**
+ * 24-hour, product-wise transaction-count trend — real DU transaction log, averaged per hour over
+ * whatever recent days on file actually carry a per-product hourly breakdown (see
+ * trafficAnalytics.ts's productHourlyAverages / trafficData.ts's header comment for the real
+ * per-outlet/per-day coverage gap this can have).
+ */
+function renderHourlyProductChartSection(productHourly: { series: Record<string, number[]>; daysAveraged: number } | undefined): string {
+  if (!productHourly || productHourly.daysAveraged === 0 || Object.keys(productHourly.series).length === 0) {
+    return `<p class="muted">No per-product hourly transaction data on file for this outlet yet.</p>`;
+  }
+  const labels = Array.from({ length: 24 }, (_, h) => `${h}:00`);
+  const colors = ["#0057a8", "#eb6834", "#2e7d32", "#8e44ad", "#c0392b"];
+  const products = [...Object.keys(productHourly.series)].sort((a, b) => {
+    const rank = (p: string) => (p === "MS" ? 0 : p === "HSD" ? 1 : 2);
+    return rank(a) - rank(b) || a.localeCompare(b);
+  });
+  const series = products.map((p, i) => ({ name: p, color: colors[i % colors.length]!, values: productHourly.series[p]! }));
+  return `
+    <p class="muted">Average transactions/hour by product, over the last ${productHourly.daysAveraged} day(s) with hourly product-level data on file.</p>
+    ${renderLineChartSVG(labels, series, { unit: "txns" })}
+  `;
+}
+
 function renderTrafficSection(traffic: any): string {
   if (!traffic) {
     return `<p class="muted">No DU transaction data uploaded for this outlet yet — upload one via the Input Tap on the Outlet Repository page.</p>`;
@@ -620,6 +643,8 @@ function renderTrafficSection(traffic: any): string {
         ? `<p>Peak hour: <strong>${traffic.peakHour.hour}:00-${traffic.peakHour.hour + 1}:00</strong> (${traffic.peakHour.transactions} transactions)</p>`
         : ""
     }
+    <h4>Hourly sales trend, product-wise <span class="muted">(24-hour, real DU transaction log)</span></h4>
+    ${renderHourlyProductChartSection(traffic.productHourly)}
     <h4>DU (dispensing unit) status</h4>
     <table class="table">
       <thead><tr><th>Pump</th><th>Nozzle</th><th>Transactions</th><th>Last transaction</th><th>Status</th></tr></thead>

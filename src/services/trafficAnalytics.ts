@@ -123,6 +123,30 @@ export function hourlyDistribution(outletId: string, days?: number): number[] {
 }
 
 /**
+ * Real per-product hourly transaction pattern — "what does a typical recent hour look like, by
+ * product", the same daily-average treatment as vehicleTypeAverages/productAverages. Only
+ * averages over days that actually carry `hourlyByProduct` (see trafficData.ts's header comment
+ * for outlets/days where that field is a real gap, not zero-filled) so a day missing this
+ * specific breakdown doesn't quietly dilute the average toward zero.
+ */
+export function productHourlyAverages(outletId: string, days = 7): { series: Record<string, number[]>; daysAveraged: number } {
+  const rows = trafficForOutlet(outletId, days).filter((d) => d.hourlyByProduct);
+  const daysAveraged = rows.length;
+  const totals: Record<string, number[]> = {};
+  for (const day of rows) {
+    for (const [product, hourly] of Object.entries(day.hourlyByProduct!)) {
+      const acc = totals[product] ?? new Array(24).fill(0);
+      for (let h = 0; h < 24; h++) acc[h] += hourly[h] ?? 0;
+      totals[product] = acc;
+    }
+  }
+  const series = Object.fromEntries(
+    Object.entries(totals).map(([product, hourly]) => [product, hourly.map((v) => (daysAveraged ? v / daysAveraged : 0))]),
+  );
+  return { series, daysAveraged };
+}
+
+/**
  * Real transaction-amount "slab" (vehicle-type) volumes grouped by calendar month, over the
  * outlet's whole transaction-log window (not just the last-7-day average used elsewhere) — lets
  * the SO see how the mix of Two-Wheeler/Four-Wheeler/HMV/Bowser traffic has actually moved month

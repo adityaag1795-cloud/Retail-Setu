@@ -867,6 +867,12 @@ export interface DailyTrafficSummary {
   byProduct: Record<string, VehicleTypeCount>;
   /** Transaction count per hour of day, index 0-23 — drives peak-hour analysis. */
   hourlyTransactionCounts: number[];
+  /**
+   * Transaction count per hour of day (0-23), per product — drives the outlet page's hourly
+   * sales-trend chart. Optional: only present for days whose source transaction rows are still
+   * available to recompute this from (see trafficData.ts's header comment for the real gap).
+   */
+  hourlyByProduct?: Record<string, number[]>;
 }
 
 /**

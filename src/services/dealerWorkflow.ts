@@ -439,6 +439,10 @@ export async function generateLOI(caseId: string): Promise<DealerCase> {
     applicantName: c.application?.applicantName ?? "Applicant",
     stretchName: c.stretchName,
     salesArea: c.salesArea,
+    district: c.application?.district,
+    state: c.application?.state,
+    category: c.application?.applicantCategory,
+    subCategory: c.application?.typeOfRO,
   });
   c.loi = { text, issuedAt: new Date().toISOString() };
   c.milestones = freshMilestones();

@@ -2999,6 +2999,7 @@ const DEALER_REQUEST_CATEGORIES = [
   { value: "SMS", label: "SMS / price-alert not going" },
   { value: "MarketIntelligence", label: "Market intelligence" },
   { value: "Modernisation", label: "Modernisation request (Canopy/Driveway/DU/Tank/Electric Panel)" },
+  { value: "Load", label: "Load / fuel supply issue" },
   { value: "Other", label: "Other" },
 ];
 

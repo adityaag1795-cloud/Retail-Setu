@@ -52,6 +52,8 @@ const CATEGORY_BASE_CRITICALITY: Record<DealerRequestCategory, RequestCriticalit
   MarketIntelligence: "Low",
   // A planned investment ask, not an operational fault — the SO works it at their own pace in Module 1.
   Modernisation: "Low",
+  // A load/supply issue can put the outlet at risk of running dry — treated as seriously as an ITPS outage.
+  Load: "High",
   Other: "Medium",
 };
 
@@ -221,7 +223,6 @@ export async function raiseDealerRequest(input: {
     criticality: req.criticality,
     criticalityReason: req.criticalityReason,
     outletName: outlet.name,
-    matchedClauses,
   });
   pushMessage(req, "AI", "Triage", req.aiTriageNote);
 

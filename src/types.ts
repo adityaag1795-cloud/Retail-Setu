@@ -1045,7 +1045,7 @@ export interface PolicyAnswer {
  * creates the linked ModernisationRequest on the outlet, which then sits "for
  * recommendation" in Module 1 for the SO's justification, cost-estimate and IRR review.
  */
-export type DealerRequestCategory = "ROMMS" | "ITPS" | "SMS" | "MarketIntelligence" | "Modernisation" | "Other";
+export type DealerRequestCategory = "ROMMS" | "ITPS" | "SMS" | "MarketIntelligence" | "Modernisation" | "Load" | "Other";
 
 export type RequestCriticality = "Critical" | "High" | "Medium" | "Low";
 

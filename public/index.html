@@ -7,6 +7,19 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <div id="entry-popup" class="entry-popup" hidden>
+    <div class="entry-popup__backdrop" data-popup-dismiss></div>
+    <div class="entry-popup__dialog" role="dialog" aria-modal="true" aria-label="MC2+ Grand Butanol Challenge">
+      <button type="button" class="entry-popup__close" data-popup-dismiss aria-label="Close">&times;</button>
+      <a href="/mc2plus-butanol-challenge.pdf" target="_blank" rel="noopener">
+        <img class="entry-popup__image" src="/mc2plus-butanol-challenge.png" alt="MC2+ Grand Butanol Challenge — apply at www.mc2plus.in, deadline August 15, 2026" />
+      </a>
+      <div class="entry-popup__actions">
+        <a class="btn btn--sm" href="/mc2plus-butanol-challenge.pdf" target="_blank" rel="noopener">View PDF</a>
+        <button type="button" class="btn btn--sm entry-popup__dismiss-btn" data-popup-dismiss>Close</button>
+      </div>
+    </div>
+  </div>
   <header class="topbar">
     <div class="topbar__brand">Retail Network Ops <span class="muted">— TypeScript prototype</span></div>
     <div id="ai-engine-badge" class="ai-badge">AI engine: loading…</div>
@@ -15,5 +28,6 @@
   <main id="app" class="content">Loading…</main>
   <div id="toast-host" class="toast-host"></div>
   <script type="module" src="/app.js"></script>
+  <script src="/entry-popup.js"></script>
 </body>
 </html>

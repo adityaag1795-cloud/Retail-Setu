@@ -11,10 +11,13 @@
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "start": "node dist/server.js",
     "dev": "tsc -p tsconfig.json --watch",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "pa:build": "tsc -p PA/tsconfig.json",
+    "pa:report": "npm run pa:build && node PA/dist/report.js"
   },
   "dependencies": {},
   "devDependencies": {
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.0",
+    "@types/node": "^22.10.0"
   }
 }

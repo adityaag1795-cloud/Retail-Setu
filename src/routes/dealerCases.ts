@@ -42,13 +42,36 @@ export function registerDealerCaseRoutes(router: Router) {
     sendJson(res, 201, await wrap(() => wf.createCase(body)));
   });
 
+  router.post("/api/cases/:id/interested-applicants", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof wf.addInterestedApplicant>[1]>(req);
+    if (!body.name) throw new ApiError(400, "name is required");
+    sendJson(res, 200, await wrap(() => wf.addInterestedApplicant(params["id"]!, body)));
+  });
+
   router.post("/api/cases/:id/roster", async (req, res, params) => {
     const body = await readJsonBody<{ entries: Parameters<typeof wf.setRoster>[1] }>(req);
     sendJson(res, 200, await wrap(() => wf.setRoster(params["id"]!, body.entries ?? [])));
   });
 
-  router.post("/api/cases/:id/feasibility", async (_req, res, params) => {
-    sendJson(res, 200, await wrap(() => wf.generateFeasibilityReport(params["id"]!)));
+  router.get("/api/cases/:id/feasibility-form", async (_req, res, params) => {
+    sendJson(res, 200, await wrap(() => wf.getFeasibilityReportForm(params["id"]!)));
+  });
+
+  router.post("/api/cases/:id/feasibility-form", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof wf.saveFeasibilityReportForm>[1]>(req);
+    sendJson(res, 200, await wrap(() => wf.saveFeasibilityReportForm(params["id"]!, body)));
+  });
+
+  router.get("/api/cases/:id/feasibility-report.pdf", async (_req, res, params) => {
+    const c = await wrap(() => wf.getCaseById(params["id"]!));
+    if (!c.feasibilityReport) throw new ApiError(404, "Feasibility report not generated yet");
+    const pdf = generateSimplePdf(`Report on Feasibility — ${c.stretchName}`, c.feasibilityReport.text.split("\n"));
+    res.writeHead(200, {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="${c.id}_feasibility_report.pdf"`,
+      "content-length": pdf.length,
+    });
+    res.end(pdf);
   });
 
   // Resitement-only: technical evaluation committee.
@@ -67,6 +90,21 @@ export function registerDealerCaseRoutes(router: Router) {
     sendJson(res, 200, await wrap(() => wf.submitApplication(params["id"]!, body)));
   });
 
+  // Best-effort field extraction from an uploaded Application Form. Real text extraction for
+  // PDF (incl. embedded-subset-font PDFs via ToUnicode CMap — see pdfReader.ts) and DOCX
+  // (docxReader.ts); a genuinely scanned image PDF with no text layer still can't be read — no
+  // OCR service is reachable from this environment. Persists the upload + extraction result on
+  // the case itself (so an FVC officer/auditor can see it later, even after reload) and returns
+  // suggested field values for the SO to review. Does not submit the ApplicationForm — actual
+  // submission still goes through POST /api/cases/:id/application above.
+  router.post("/api/cases/:id/application/extract", async (req, res, params) => {
+    const body = await readJsonBody<{ text?: string; base64?: string; fileName?: string }>(req);
+    const { extraction } = await wrap(() =>
+      wf.recordApplicationFormUpload(params["id"]!, body.fileName ?? "upload.txt", { text: body.text, base64: body.base64 }),
+    );
+    sendJson(res, 200, extraction);
+  });
+
   router.post("/api/cases/:id/inspections/asc", async (req, res, params) => {
     const body = await readJsonBody<{
       itemAnswers: Parameters<typeof wf.submitAsc>[1];
@@ -75,6 +113,12 @@ export function registerDealerCaseRoutes(router: Router) {
       recommendation: Parameters<typeof wf.submitAsc>[4];
       member1: string;
       member2: string;
+      regionalOfficeName?: string;
+      locationSrNo?: string;
+      reviewingOfficerName?: string;
+      reviewingOfficerDesignation?: string;
+      officerInChargeName?: string;
+      officerInChargeDesignation?: string;
     }>(req);
     if (!body.recommendation || !body.member1 || !body.member2) {
       throw new ApiError(400, "recommendation, member1 and member2 are required");
@@ -91,6 +135,12 @@ export function registerDealerCaseRoutes(router: Router) {
           body.recommendation,
           body.member1,
           body.member2,
+          body.regionalOfficeName ?? "",
+          body.locationSrNo ?? "",
+          body.reviewingOfficerName ?? "",
+          body.reviewingOfficerDesignation ?? "",
+          body.officerInChargeName ?? "",
+          body.officerInChargeDesignation ?? "",
         ),
       ),
     );
@@ -146,8 +196,54 @@ export function registerDealerCaseRoutes(router: Router) {
     );
   });
 
-  router.post("/api/cases/:id/file-note", async (_req, res, params) => {
-    sendJson(res, 200, await wrap(() => wf.generateFileNote(params["id"]!)));
+  // Attach a scanned/offline ASC, LEC or FVC report for the record (no field extraction — see
+  // recordInspectionUpload's doc comment for why).
+  for (const kind of ["asc", "lec", "fvc"] as const) {
+    router.post(`/api/cases/:id/inspections/${kind}/upload`, async (req, res, params) => {
+      const body = await readJsonBody<{ text?: string; base64?: string; fileName?: string }>(req);
+      sendJson(res, 200, await wrap(() => wf.recordInspectionUpload(params["id"]!, kind, body.fileName ?? "upload.txt", { text: body.text, base64: body.base64 })));
+    });
+
+    router.get(`/api/cases/:id/${kind}.pdf`, async (_req, res, params) => {
+      const c = await wrap(() => wf.getCaseById(params["id"]!));
+      const result = c.inspections[kind];
+      if (!result) throw new ApiError(404, `${kind.toUpperCase()} report not generated yet`);
+      const pdf = generateSimplePdf(`${kind.toUpperCase()} Report — ${c.stretchName}`, result.reportText.split("\n"));
+      res.writeHead(200, {
+        "content-type": "application/pdf",
+        "content-disposition": `attachment; filename="${c.id}_${kind}.pdf"`,
+        "content-length": pdf.length,
+      });
+      res.end(pdf);
+    });
+  }
+
+  router.get("/api/cases/:id/file-note-form", async (_req, res, params) => {
+    sendJson(res, 200, await wrap(() => wf.getLoiFileNoteForm(params["id"]!)));
+  });
+
+  router.post("/api/cases/:id/file-note-form", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof wf.saveLoiFileNoteForm>[1]>(req);
+    sendJson(res, 200, await wrap(() => wf.saveLoiFileNoteForm(params["id"]!, body)));
+  });
+
+  router.get("/api/cases/:id/file-note.pdf", async (_req, res, params) => {
+    const c = await wrap(() => wf.getCaseById(params["id"]!));
+    if (!c.fileNote) throw new ApiError(404, "File note not generated yet");
+    const lines = [
+      `System ID: ${c.fileNote.systemId} | Initiated: ${c.fileNote.initiatedOn}`,
+      c.fileNote.subject,
+      "",
+      ...c.fileNote.routing.flatMap((r) => [`${r.role} — ${r.actorName}, ${r.actorTitle} (${r.timestamp.slice(0, 19).replace("T", " ")})`, r.remarks, ""]),
+      `Status: ${c.fileNote.status}`,
+    ];
+    const pdf = generateSimplePdf(`File Note for LOI — ${c.stretchName}`, lines);
+    res.writeHead(200, {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="${c.id}_file_note.pdf"`,
+      "content-length": pdf.length,
+    });
+    res.end(pdf);
   });
 
   router.post("/api/cases/:id/file-note/decision", async (req, res, params) => {
@@ -199,12 +295,18 @@ export function registerDealerCaseRoutes(router: Router) {
     res.end(pdf);
   });
 
+  router.post("/api/cases/:id/milestones", async (req, res, params) => {
+    const body = await readJsonBody<{ label: string }>(req);
+    if (!body.label) throw new ApiError(400, "label is required");
+    sendJson(res, 200, await wrap(() => wf.addCustomMilestone(params["id"]!, body.label)));
+  });
+
   router.post("/api/cases/:id/milestones/:key", async (req, res, params) => {
     const body = await readJsonBody<{ status: Parameters<typeof wf.updateMilestone>[2]; notes?: string; departments?: string[] }>(req);
     sendJson(
       res,
       200,
-      await wrap(() => wf.updateMilestone(params["id"]!, params["key"] as never, body.status, body.notes, body.departments)),
+      await wrap(() => wf.updateMilestone(params["id"]!, params["key"]!, body.status, body.notes, body.departments)),
     );
   });
 
@@ -212,12 +314,22 @@ export function registerDealerCaseRoutes(router: Router) {
     sendJson(res, 200, await wrap(() => wf.syncCustomerMaster(params["id"]!)));
   });
 
-  router.post("/api/cases/:id/budget", async (req, res, params) => {
-    const body = await readJsonBody<{ costEstimate: number; irr: number }>(req);
-    if (typeof body.costEstimate !== "number" || typeof body.irr !== "number") {
-      throw new ApiError(400, "costEstimate and irr (numbers) are required");
-    }
-    sendJson(res, 200, await wrap(() => wf.generateBudget(params["id"]!, body.costEstimate, body.irr)));
+  router.get("/api/cases/:id/budget-cost-estimate", async (_req, res, params) => {
+    sendJson(res, 200, await wrap(() => wf.getBudgetCostEstimate(params["id"]!)));
+  });
+
+  router.post("/api/cases/:id/budget/cost-estimate", async (req, res, params) => {
+    const body = await readJsonBody<{ lineItems: { id: string; qty: number; rate: number }[] }>(req);
+    sendJson(res, 200, await wrap(() => wf.updateBudgetCostEstimateLineItems(params["id"]!, body.lineItems ?? [])));
+  });
+
+  router.post("/api/cases/:id/budget/irr", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof wf.updateBudgetIrrAssumptions>[1]>(req);
+    sendJson(res, 200, await wrap(() => wf.updateBudgetIrrAssumptions(params["id"]!, body)));
+  });
+
+  router.post("/api/cases/:id/budget/submit", async (_req, res, params) => {
+    sendJson(res, 200, await wrap(() => wf.submitBudgetForApproval(params["id"]!)));
   });
 
   router.post("/api/cases/:id/budget/decision", async (req, res, params) => {

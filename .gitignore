@@ -4,3 +4,4 @@ dist/
 data/uploads/
 retail-setu-standalone.html
 Modernisation_Request_Workflow.pdf
+__pycache__/

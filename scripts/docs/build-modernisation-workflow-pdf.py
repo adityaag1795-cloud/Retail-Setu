@@ -183,12 +183,16 @@ step_table(
 )
 
 step_table(
-    7, "EAM gives (or withholds) final sign-off",
-    "EAM reviewer", "Same section, EAM approval control (shown once Approved)",
-    "Approve or reject at the Engineering Asset Management gate &mdash; a separate decision from the SO's.",
-    "Sets eamStatus. If approved <b>and</b> the type is Canopy, flips the outlet's own canopy asset flag "
-    "to true.",
+    7, "EAM sign-off &mdash; integrated into the existing e-Proposal menu",
+    "EAM reviewer (via e-Proposal)", "Redirected from Retail Setu into the <b>existing e-Proposal menu</b>",
+    "On SO approval (step 6), Retail Setu hands the generated Budget Approval Note off into the existing "
+    "e-Proposal menu, where EAM records final sign-off exactly as it does for any other capex proposal "
+    "today &mdash; a separate decision from the SO's, not a new screen inside Retail Setu.",
+    "eamStatus is set once the e-Proposal module's decision syncs back. If approved <b>and</b> the type is "
+    "Canopy, flips the outlet's own canopy asset flag to true.",
     "POST /api/outlets/:id/modernisation-requests/:reqId/eam &nbsp;{approve}",
+    gate="Not yet wired in this prototype: the route above records EAM sign-off in-app as a stand-in for "
+    "the e-Proposal hand-off described here (see &sect;7, production integration notes).",
 )
 
 step_table(
@@ -258,9 +262,10 @@ integration_items = [
     "snapshot, which this proposal's cost/IRR case can reference) should be fetched from "
     "<b>TIBCO</b> for real-time sales-area/competitor data, rather than the static Market Share report "
     "snapshot this prototype uses today.",
-    "Once a Budget Approval Note is generated (step 6, on SO approval), the workflow should "
-    "<b>redirect into the e-Proposal module</b> for formal submission, routing and tracking, instead of "
-    "ending at a PDF download as this prototype does today.",
+    "<b>EAM sign-off</b> (step 7) should be <b>integrated into the existing e-Proposal menu</b> rather than "
+    "a separate in-app approval screen &mdash; the generated Budget Approval Note is handed off there for "
+    "formal submission, routing and tracking, instead of ending at a PDF download as this prototype does "
+    "today.",
 ]
 story.append(ListFlowable(
     [ListItem(Paragraph(x, styles["BodyCustom"]), leftIndent=10) for x in integration_items],

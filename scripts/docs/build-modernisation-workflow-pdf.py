@@ -213,6 +213,59 @@ small(
     "<b>SO Cockpit</b>'s open-work list, linking straight back to the outlet page."
 )
 
+story.append(Spacer(1, 10))
+
+# ---------------------------------------------------------------------------
+# Section 2: states diagram (as a simple left-to-right flow table)
+# ---------------------------------------------------------------------------
+h2("2. Request lifecycle at a glance")
+
+flow_cells = ["Raised\n(Module 7)", "Costed &\nIRR set", "SO\nDecision", "Approved →\nFile Note +\nBudget Note", "EAM\nSign-off", "Weekly\ntracking"]
+reject_row = ["", "", "Rejected →\nends here", "", "", ""]
+flow_table = Table([flow_cells], colWidths=[28*mm]*6)
+flow_table.setStyle(TableStyle([
+    ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#1a3a5c")),
+    ("TEXTCOLOR", (0,0), (-1,-1), colors.white),
+    ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
+    ("FONTSIZE", (0,0), (-1,-1), 8),
+    ("ALIGN", (0,0), (-1,-1), "CENTER"),
+    ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ("TOPPADDING", (0,0), (-1,-1), 8), ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+    ("INNERGRID", (0,0), (-1,-1), 1, colors.white),
+]))
+story.append(flow_table)
+story.append(Spacer(1, 4))
+small("Rejection at the SO Decision step is a dead end by design &mdash; no file note, no budget note, no EAM step.")
+story.append(Spacer(1, 12))
+
+story.append(Spacer(1, 14))
+
+# ---------------------------------------------------------------------------
+# Section 7: production integration notes
+# ---------------------------------------------------------------------------
+h2("7. Production integration notes (not yet wired in this prototype)")
+body(
+    "This prototype's Outlet Repository (Module 1) and Trading Area snapshot are seeded from real HPCL "
+    "workbooks supplied for this project, not from live system calls. In a production deployment, the "
+    "following integrations should replace that static data:"
+)
+integration_items = [
+    "<b>Outlet details</b> (SAP code, dealer name, district, sales area, class of market, etc.) used when "
+    "generating a proposal &mdash; the File Note and Budget Approval Note at step 6 &mdash; should be "
+    "fetched from the <b>Outlet Repository (Module 1) or directly from SAP</b> master data, not re-keyed "
+    "by the SO.",
+    "<b>Trading Area details</b> (the dealer-wise competitive volumes behind Module 1's Trading Area "
+    "snapshot, which this proposal's cost/IRR case can reference) should be fetched from "
+    "<b>TIBCO</b> for real-time sales-area/competitor data, rather than the static Market Share report "
+    "snapshot this prototype uses today.",
+    "Once a Budget Approval Note is generated (step 6, on SO approval), the workflow should "
+    "<b>redirect into the e-Proposal module</b> for formal submission, routing and tracking, instead of "
+    "ending at a PDF download as this prototype does today.",
+]
+story.append(ListFlowable(
+    [ListItem(Paragraph(x, styles["BodyCustom"]), leftIndent=10) for x in integration_items],
+    bulletType="bullet", start="•",
+))
 
 doc = SimpleDocTemplate(
     OUT, pagesize=A4,

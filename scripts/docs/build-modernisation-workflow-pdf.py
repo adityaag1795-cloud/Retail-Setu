@@ -419,6 +419,35 @@ story.append(ListFlowable(
     bulletType="bullet", start="•",
 ))
 
+story.append(Spacer(1, 14))
+
+# ---------------------------------------------------------------------------
+# Section 7: production integration notes
+# ---------------------------------------------------------------------------
+h2("7. Production integration notes (not yet wired in this prototype)")
+body(
+    "This prototype's Outlet Repository (Module 1) and Trading Area snapshot are seeded from real HPCL "
+    "workbooks supplied for this project, not from live system calls. In a production deployment, the "
+    "following integrations should replace that static data:"
+)
+integration_items = [
+    "<b>Outlet details</b> (SAP code, dealer name, district, sales area, class of market, etc.) used when "
+    "generating a proposal &mdash; the File Note and Budget Approval Note at step 6 &mdash; should be "
+    "fetched from the <b>Outlet Repository (Module 1) or directly from SAP</b> master data, not re-keyed "
+    "by the SO.",
+    "<b>Trading Area details</b> (the dealer-wise competitive volumes behind Module 1's Trading Area "
+    "snapshot, which this proposal's cost/IRR case can reference) should be fetched from "
+    "<b>TIBCO</b> for real-time sales-area/competitor data, rather than the static Market Share report "
+    "snapshot this prototype uses today.",
+    "Once a Budget Approval Note is generated (step 6, on SO approval), the workflow should "
+    "<b>redirect into the e-Proposal module</b> for formal submission, routing and tracking, instead of "
+    "ending at a PDF download as this prototype does today.",
+]
+story.append(ListFlowable(
+    [ListItem(Paragraph(x, styles["BodyCustom"]), leftIndent=10) for x in integration_items],
+    bulletType="bullet", start="•",
+))
+
 doc = SimpleDocTemplate(
     OUT, pagesize=A4,
     leftMargin=16*mm, rightMargin=16*mm, topMargin=16*mm, bottomMargin=16*mm,

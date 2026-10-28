@@ -3,9 +3,26 @@ import { sendJson, readJsonBody, ApiError } from "../httpUtil.js";
 import { store, nextId } from "../store.js";
 import type { Communication } from "../types.js";
 import { generateSimplePdf } from "../services/pdfGen.js";
+import { extractRawTextFromUpload } from "../services/formExtraction.js";
 import { monthlyKL, dryDayCount, outletTankStock } from "../services/predictive.js";
 import { requestsForOutlet } from "../services/dealerDesk.js";
 import * as wf from "../services/dealerWorkflow.js";
+import * as mod from "../services/modernisation.js";
+import {
+  hasTrafficData,
+  trafficForOutlet,
+  vehicleTypeAverages,
+  productAverages,
+  productHourlyAverages,
+  peakHour,
+  nozzleStatusForOutlet,
+  monthlySlabTrend,
+  slabTrendNarrative,
+} from "../services/trafficAnalytics.js";
+import { analyseAndApplyOutletInput, outletDataNotesFor, OutletInputError } from "../services/outletInput.js";
+import { outletGrowthReport, PARTIAL_MONTH_CAVEAT } from "../services/growthAnalysis.js";
+import { fetchDistrictNews } from "../services/districtNews.js";
+import type { ActionPoint } from "../types.js";
 
 function outletOrThrow(id: string) {
   const o = store.outlets.get(id);
@@ -17,7 +34,8 @@ async function wrap<T>(fn: () => T | Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof wf.WorkflowError) throw new ApiError(409, err.message);
+    if (err instanceof wf.WorkflowError || err instanceof mod.ModernisationError) throw new ApiError(409, err.message);
+    if (err instanceof OutletInputError) throw new ApiError(400, err.message);
     throw err;
   }
 }
@@ -36,7 +54,7 @@ function fixedAssetSummary(outlet: ReturnType<typeof outletOrThrow>) {
 
 export function registerOutletRoutes(router: Router) {
   router.get("/api/outlets", (_req, res) => {
-    sendJson(res, 200, [...store.outlets.values()]);
+    sendJson(res, 200, store.visibleOutlets());
   });
 
   router.get("/api/outlets/:id", (_req, res, params) => {
@@ -49,6 +67,21 @@ export function registerOutletRoutes(router: Router) {
     const outlet = outletOrThrow(params["id"]!);
     const comms = [...store.communications.values()].filter((c) => c.outletId === outlet.id);
     const linkedCase = outlet.linkedCaseId ? store.dealerCases.get(outlet.linkedCaseId) : undefined;
+    const tradingArea = outlet.tradingAreaId ? store.tradingAreas.get(outlet.tradingAreaId) : undefined;
+    const actionPoints = [...store.actionPoints.values()].filter((a) => a.outletId === outlet.id).sort((a, b) => b.date.localeCompare(a.date));
+    const traffic = hasTrafficData(outlet.id)
+      ? {
+          vehicleTypeAverages: vehicleTypeAverages(outlet.id, 7).perDay,
+          productAverages: productAverages(outlet.id, 7).perDay,
+          avgWindowDays: vehicleTypeAverages(outlet.id, 7).daysAveraged,
+          productHourly: productHourlyAverages(outlet.id, 7),
+          peakHour: peakHour(outlet.id, 7),
+          nozzles: nozzleStatusForOutlet(outlet.id),
+          daysOnFile: trafficForOutlet(outlet.id).length,
+          slabTrend: monthlySlabTrend(outlet.id),
+          slabTrendNarrative: slabTrendNarrative(outlet.id),
+        }
+      : undefined;
     sendJson(res, 200, {
       outlet,
       masterSheetTable: Object.entries(outlet.masterSheet).map(([field, value]) => ({ field, value })),
@@ -58,9 +91,21 @@ export function registerOutletRoutes(router: Router) {
       dryDaysLast60: dryDayCount(outlet.id),
       tankStock: outletTankStock(outlet.id),
       dealerRequests: requestsForOutlet(outlet.id),
-      canopyRequest: outlet.canopyRequest,
+      modernisationRequests: outlet.modernisationRequests,
       linkedCase: linkedCase ? { id: linkedCase.id, stage: linkedCase.stage } : undefined,
+      tradingArea: tradingArea ? { id: tradingArea.id, name: tradingArea.name } : undefined,
+      actionPoints,
+      traffic,
+      growth: outletGrowthReport(outlet),
+      growthCaveat: PARTIAL_MONTH_CAVEAT,
     });
+  });
+
+  // Separate from /report so a slow/blocked live news fetch never holds up the rest of the
+  // one-pager (same pattern as /api/cockpit/energy-briefing) — fetched in parallel client-side.
+  router.get("/api/outlets/:id/district-news", async (_req, res, params) => {
+    const outlet = outletOrThrow(params["id"]!);
+    sendJson(res, 200, await fetchDistrictNews(outlet.district));
   });
 
   router.get("/api/outlets/:id/report.pdf", (_req, res, params) => {
@@ -108,8 +153,14 @@ export function registerOutletRoutes(router: Router) {
 
   router.post("/api/outlets/:id/communications", async (req, res, params) => {
     const outlet = outletOrThrow(params["id"]!);
-    const body = await readJsonBody<Partial<Communication>>(req);
+    const body = await readJsonBody<Partial<Communication> & { uploadFileName?: string; uploadText?: string; uploadBase64?: string }>(req);
     if (!body.subject || !body.summary) throw new ApiError(400, "subject and summary are required");
+    let uploadedFileName: string | undefined;
+    let uploadedTextPreview: string | undefined;
+    if (body.uploadFileName) {
+      uploadedFileName = body.uploadFileName;
+      uploadedTextPreview = extractRawTextFromUpload(body.uploadFileName, { text: body.uploadText, base64: body.uploadBase64 }).slice(0, 2000);
+    }
     const comm: Communication = {
       id: nextId("COMM"),
       outletId: outlet.id,
@@ -120,6 +171,8 @@ export function registerOutletRoutes(router: Router) {
       summary: body.summary,
       pdfRecordName: `${outlet.id}_${nextId("REC")}.pdf`,
       scanCopy: body.scanCopy ?? false,
+      uploadedFileName,
+      uploadedTextPreview,
     };
     store.communications.set(comm.id, comm);
     sendJson(res, 201, comm);
@@ -135,6 +188,7 @@ export function registerOutletRoutes(router: Router) {
       `Subject: ${comm.subject}`,
       "",
       comm.summary,
+      ...(comm.uploadedFileName ? ["", `Attached file: ${comm.uploadedFileName}`, "", comm.uploadedTextPreview ?? ""] : []),
     ]);
     res.writeHead(200, {
       "content-type": "application/pdf",
@@ -144,36 +198,48 @@ export function registerOutletRoutes(router: Router) {
     res.end(pdf);
   });
 
-  // Canopy addition sub-workflow — available to any operational outlet, per the real
-  // "request cum commitment proposal from portal" flow (not gated on a live Module 2 case).
-  router.post("/api/outlets/:id/canopy-request", async (req, res, params) => {
-    const body = await readJsonBody<{ committedVolumeKL: number; costEstimate: number; irr: number; dealerJustification: string }>(req);
+  // Modernisation Request sub-workflow (Canopy/Driveway/DU/Tank/Electric Panel) — initiated via
+  // Module 7 (Dealer Request Desk); reviewed here on the outlet ("for recommendation").
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/justification", async (req, res, params) => {
+    const body = await readJsonBody<{ soJustification: string }>(req);
+    if (!body.soJustification) throw new ApiError(400, "soJustification is required");
+    sendJson(res, 200, await wrap(() => mod.setSoJustification(params["id"]!, params["reqId"]!, body.soJustification)));
+  });
+
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/cost-estimate", async (req, res, params) => {
+    const body = await readJsonBody<{ lineItems: { id: string; qty: number; rate: number }[] }>(req);
+    sendJson(res, 200, await wrap(() => mod.updateCostEstimateLineItems(params["id"]!, params["reqId"]!, body.lineItems ?? [])));
+  });
+
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/irr", async (req, res, params) => {
+    const body = await readJsonBody<Parameters<typeof mod.updateIrrAssumptions>[2]>(req);
+    sendJson(res, 200, await wrap(() => mod.updateIrrAssumptions(params["id"]!, params["reqId"]!, body)));
+  });
+
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/decision", async (req, res, params) => {
+    const body = await readJsonBody<{ decision: "Approved" | "Rejected"; justification: string; decidedBy: string }>(req);
     sendJson(
       res,
       200,
-      await wrap(() => wf.requestCanopy(params["id"]!, body.committedVolumeKL, body.costEstimate, body.irr, body.dealerJustification)),
+      await wrap(() => mod.decideModernisationRequest(params["id"]!, params["reqId"]!, body.decision, body.justification, body.decidedBy ?? "SO")),
     );
   });
 
-  router.post("/api/outlets/:id/canopy-request/decision", async (req, res, params) => {
-    const body = await readJsonBody<{ decision: "Approved" | "Rejected"; justification: string; decidedBy: string }>(req);
-    sendJson(res, 200, await wrap(() => wf.decideCanopyRequest(params["id"]!, body.decision, body.justification, body.decidedBy ?? "SO")));
-  });
-
-  router.post("/api/outlets/:id/canopy-request/eam", async (req, res, params) => {
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/eam", async (req, res, params) => {
     const body = await readJsonBody<{ approve: boolean }>(req);
-    sendJson(res, 200, await wrap(() => wf.decideCanopyEAM(params["id"]!, !!body.approve)));
+    sendJson(res, 200, await wrap(() => mod.decideModernisationEAM(params["id"]!, params["reqId"]!, !!body.approve)));
   });
 
-  router.post("/api/outlets/:id/canopy-request/weekly-check", async (req, res, params) => {
+  router.post("/api/outlets/:id/modernisation-requests/:reqId/weekly-check", async (req, res, params) => {
     const body = await readJsonBody<{ actualKL: number }>(req);
-    sendJson(res, 200, await wrap(() => wf.recordWeeklyCanopyPerformance(params["id"]!, body.actualKL)));
+    sendJson(res, 200, await wrap(() => mod.recordWeeklyModernisationPerformance(params["id"]!, params["reqId"]!, body.actualKL)));
   });
 
-  router.get("/api/outlets/:id/canopy-file-note.pdf", (_req, res, params) => {
+  router.get("/api/outlets/:id/modernisation-requests/:reqId/file-note.pdf", (_req, res, params) => {
     const outlet = outletOrThrow(params["id"]!);
-    const fileNote = outlet.canopyRequest?.fileNote;
-    if (!fileNote) throw new ApiError(404, "Canopy file note not generated yet");
+    const modReq = outlet.modernisationRequests.find((r) => r.id === params["reqId"]);
+    const fileNote = modReq?.fileNote;
+    if (!fileNote) throw new ApiError(404, "Modernisation file note not generated yet");
     const lines = [
       `System ID: ${fileNote.systemId} | Initiated: ${fileNote.initiatedOn}`,
       fileNote.subject,
@@ -181,12 +247,71 @@ export function registerOutletRoutes(router: Router) {
       ...fileNote.routing.flatMap((r) => [`${r.role} — ${r.actorName}, ${r.actorTitle} (${r.timestamp.slice(0, 19).replace("T", " ")})`, r.remarks, ""]),
       `Status: ${fileNote.status}`,
     ];
-    const pdf = generateSimplePdf(`Canopy File Note — ${outlet.name}`, lines);
+    const pdf = generateSimplePdf(`Modernisation File Note — ${outlet.name}`, lines);
     res.writeHead(200, {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="${outlet.id}_canopy_file_note.pdf"`,
+      "content-disposition": `attachment; filename="${outlet.id}_modernisation_file_note.pdf"`,
       "content-length": pdf.length,
     });
     res.end(pdf);
+  });
+
+  // Action Points / Minutes of Meeting — SO's own memory + follow-up tracker per outlet.
+  router.get("/api/outlets/:id/action-points", (_req, res, params) => {
+    const outlet = outletOrThrow(params["id"]!);
+    sendJson(
+      res,
+      200,
+      [...store.actionPoints.values()].filter((a) => a.outletId === outlet.id).sort((a, b) => b.date.localeCompare(a.date)),
+    );
+  });
+
+  router.post("/api/outlets/:id/action-points", async (req, res, params) => {
+    const outlet = outletOrThrow(params["id"]!);
+    const body = await readJsonBody<Partial<ActionPoint>>(req);
+    if (!body.title || !body.raisedBy) throw new ApiError(400, "title and raisedBy are required");
+    const point: ActionPoint = {
+      id: nextId("AP"),
+      outletId: outlet.id,
+      date: body.date ?? new Date().toISOString().slice(0, 10),
+      raisedBy: body.raisedBy,
+      title: body.title,
+      notes: body.notes ?? "",
+      actionRequired: body.actionRequired,
+      owner: body.owner,
+      dueDate: body.dueDate,
+      status: body.status ?? "Open",
+      createdAt: new Date().toISOString(),
+    };
+    store.actionPoints.set(point.id, point);
+    sendJson(res, 201, point);
+  });
+
+  router.put("/api/outlets/:id/action-points/:apId", async (req, res, params) => {
+    outletOrThrow(params["id"]!);
+    const point = store.actionPoints.get(params["apId"]!);
+    if (!point || point.outletId !== params["id"]) throw new ApiError(404, "Action point not found");
+    const body = await readJsonBody<Partial<ActionPoint>>(req);
+    const justCompleted = body.status === "Done" && point.status !== "Done";
+    Object.assign(point, body);
+    if (justCompleted) point.completedAt = new Date().toISOString();
+    else if (body.status && body.status !== "Done") point.completedAt = undefined;
+    sendJson(res, 200, point);
+  });
+
+  // Free-form "keep feeding me data" input tap — one fact per line, no code change needed. See
+  // services/outletInput.ts for what gets applied directly vs. merged into the Master Sheet vs.
+  // kept as a plain note.
+  router.get("/api/outlets/:id/data-input", (_req, res, params) => {
+    outletOrThrow(params["id"]!);
+    sendJson(res, 200, outletDataNotesFor(params["id"]!));
+  });
+
+  router.post("/api/outlets/:id/data-input", async (req, res, params) => {
+    outletOrThrow(params["id"]!);
+    const body = await readJsonBody<{ text: string }>(req);
+    if (!body.text) throw new ApiError(400, "text is required");
+    const note = await wrap(() => analyseAndApplyOutletInput(params["id"]!, body.text));
+    sendJson(res, 201, { note, outlet: store.outlets.get(params["id"]!) });
   });
 }

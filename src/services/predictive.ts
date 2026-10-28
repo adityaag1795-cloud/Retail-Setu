@@ -1,6 +1,18 @@
-import type { Outlet, SalesRecord, TankStock, AnalyticsAnswer } from "../types.js";
-import { store } from "../store.js";
+import type { Outlet, SalesRecord, TankStock, AnalyticsAnswer, TaskItem } from "../types.js";
+import { store, nextId } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
+import {
+  hasTrafficData,
+  vehicleTypeAverages,
+  productAverages,
+  peakHour,
+  nozzleStatusForOutlet,
+  outletsWithInactiveNozzles,
+  VEHICLE_TYPE_LABELS,
+} from "./trafficAnalytics.js";
+import { outletsBelowTradingAreaAverage } from "./tradingAreaAnalytics.js";
+import { dryRiskWithoutCover, itpsInactiveOutlets } from "./predictiveInsights.js";
+import type { VehicleType } from "../types.js";
 
 const LOOKBACK_DAYS = 60;
 
@@ -40,7 +52,7 @@ export function lowStockProducts(outlet: Outlet, thresholdPct = 15): { product: 
 
 /** Outlets with any product currently below `thresholdPct` of tank capacity, per the real stock feed. */
 export function outletsLowOnStock(thresholdPct = 15): { outlet: Outlet; products: { product: string; pct: number; stockQtyLtr: number; capacityLtr: number }[] }[] {
-  return [...store.outlets.values()]
+  return store.visibleOutlets()
     .filter((o) => o.status === "Operational")
     .map((o) => ({ outlet: o, products: lowStockProducts(o, thresholdPct) }))
     .filter((x) => x.products.length > 0);
@@ -60,19 +72,31 @@ export function dryDayCount(outletId: string, days = LOOKBACK_DAYS): number {
   return recentRecords(outletId, days).filter((r) => r.msKL === 0 && r.hsdKL === 0).length;
 }
 
-export function outletsBelowTA(): { outlet: Outlet; actualKL: number; taAverageKL: number }[] {
-  return [...store.outlets.values()]
-    .filter((o) => o.status === "Operational")
-    .map((o) => ({ outlet: o, actualKL: monthlyKL(o.id), taAverageKL: o.taAverageKL }))
-    .filter((x) => x.actualKL < x.taAverageKL);
+/**
+ * Real outlets below their own trading area's real dealer-wise competitive average TMF volume —
+ * see tradingAreaAnalytics.ts. Deliberately every operational outlet with a real trading-area
+ * assignment, not just the prototype's curated/visible set (same reasoning as the Module 1 Trading
+ * Area page: a genuine underperformer shouldn't be suppressed just because it's outside the demo's
+ * curated 11). Sorted worst-first; callers cap this to a top-N for display where appropriate.
+ */
+export function outletsBelowTA(): { outlet: Outlet; volumeKL: number; tradingAreaAverageKL: number; tradingAreaName: string; pctOfAverage: number }[] {
+  return outletsBelowTradingAreaAverage()
+    .filter((r) => r.outlet.status === "Operational")
+    .map((r) => ({
+      outlet: r.outlet,
+      volumeKL: r.tmfVolumeKL,
+      tradingAreaAverageKL: r.tradingAreaAverageKL,
+      tradingAreaName: r.tradingAreaName,
+      pctOfAverage: r.pctOfAverage,
+    }));
 }
 
 export function dryOutletsToday(): Outlet[] {
-  return [...store.outlets.values()].filter((o) => o.status === "Operational" && isDryToday(o));
+  return store.visibleOutlets().filter((o) => o.status === "Operational" && isDryToday(o));
 }
 
 export function highMsLowHsdOutlets(msThresholdKL = 100, hsdThresholdKL = 10): { outlet: Outlet; msKL: number; hsdKL: number }[] {
-  return [...store.outlets.values()]
+  return store.visibleOutlets()
     .filter((o) => o.status === "Operational")
     .map((o) => {
       const recs = recentRecords(o.id, 30);
@@ -84,17 +108,26 @@ export function highMsLowHsdOutlets(msThresholdKL = 100, hsdThresholdKL = 10): {
 }
 
 export function frequentLowStock(minDryDays = 3): { outlet: Outlet; dryDays: number }[] {
-  return [...store.outlets.values()]
+  return store.visibleOutlets()
     .filter((o) => o.status === "Operational")
     .map((o) => ({ outlet: o, dryDays: dryDayCount(o.id) }))
     .filter((x) => x.dryDays >= minDryDays);
 }
 
 export function dailySummary() {
+  const belowTARows = outletsBelowTA();
   return {
     generatedAt: new Date().toISOString(),
     source: "CRIS" as const,
-    belowTA: outletsBelowTA().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, actualKL: x.actualKL, taAverageKL: x.taAverageKL })),
+    // Real total count kept honest; only the displayed list is capped to the 3 worst (by how far
+    // below their trading area's real average) — the full list still drives Cockpit task creation
+    // in syncPredictiveAlerts below, this is just the summary card's readability limit.
+    belowTA: {
+      totalCount: belowTARows.length,
+      worst: belowTARows
+        .slice(0, 3)
+        .map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, volumeKL: x.volumeKL, tradingAreaAverageKL: x.tradingAreaAverageKL, tradingAreaName: x.tradingAreaName, pctOfAverage: x.pctOfAverage })),
+    },
     dryToday: dryOutletsToday().map((o) => ({ outletId: o.id, name: o.name })),
     frequentlyDry: frequentLowStock().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, dryDays: x.dryDays })),
     highMsLowHsd: highMsLowHsdOutlets().map((x) => ({ outletId: x.outlet.id, name: x.outlet.name, msKL: x.msKL, hsdKL: x.hsdKL })),
@@ -102,18 +135,188 @@ export function dailySummary() {
   };
 }
 
+function hasOpenTask(outletId: string, title: string): boolean {
+  return [...store.tasks.values()].some(
+    (t) => t.linkedModule === "Outlet" && t.linkedRecordId === outletId && t.title === title && t.status !== "Done",
+  );
+}
+
+function createOutletTask(outlet: Outlet, title: string, description: string, priority: TaskItem["priority"], urgent: boolean) {
+  const so = [...store.team.values()].find((t) => t.role === "SO");
+  if (!so) return;
+  const task: TaskItem = {
+    id: nextId("TASK"),
+    title,
+    description,
+    assignedTo: so.id,
+    assignedBy: "System",
+    dueDate: new Date().toISOString().slice(0, 10),
+    status: "Open",
+    priority,
+    urgent,
+    important: true,
+    linkedModule: "Outlet",
+    linkedRecordId: outlet.id,
+    createdAt: new Date().toISOString(),
+  };
+  store.tasks.set(task.id, task);
+}
+
+/**
+ * Closes the loop from "Module 3 noticed something" to "it's a tracked task" — the same pattern
+ * already used for dealer requests and stuck milestones, applied to persistent predictive
+ * signals instead of leaving them as a page the SO has to remember to check. Idempotent: run it
+ * as often as you like (called whenever Module 3 or the Cockpit is opened) — it only creates a
+ * task once per still-open signal, and a new one only after the previous task is resolved.
+ */
+export function syncPredictiveAlerts(): void {
+  for (const outlet of dryOutletsToday()) {
+    const title = `Dry outlet — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(outlet, title, `${outlet.name} is dry today per the live stock/sales feed — check tanker scheduling.`, "High", true);
+    }
+  }
+  for (const { outlet, volumeKL, tradingAreaAverageKL, tradingAreaName, pctOfAverage } of outletsBelowTA()) {
+    if (pctOfAverage >= 80) continue; // only meaningfully below, not noise
+    const title = `Below trading area average — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(
+        outlet,
+        title,
+        `${outlet.name}: ${volumeKL} KL vs ${tradingAreaName} average ${tradingAreaAverageKL} KL (${pctOfAverage}%) — investigate.`,
+        "Medium",
+        false,
+      );
+    }
+  }
+  for (const { outletId, nozzles } of outletsWithInactiveNozzles()) {
+    const outlet = store.outlets.get(outletId);
+    if (!outlet) continue;
+    const title = `Possibly inactive DU(s) — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      const list = nozzles.map((n) => `Pump ${n.pumpNo}/Nozzle ${n.nozzleNo} (last transaction ${n.lastTransactionAt.slice(0, 10)})`).join(", ");
+      createOutletTask(outlet, title, `${outlet.name}: ${nozzles.length} dispensing unit(s) look inactive per the DU transaction log — ${list}. Verify if genuinely down.`, "High", true);
+    }
+  }
+  // Real dry-risk-without-cover (Outlet Criticality Monitor) — dry/going-dry with no indent placed
+  // and/or no funds available, i.e. nothing already in motion to fix it.
+  for (const row of dryRiskWithoutCover()) {
+    const outlet = store.outlets.get(row.outletId);
+    if (!outlet) continue;
+    const title = `Dry risk, no cover — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(outlet, title, row.message, row.criticality === "HIGH" ? "High" : "Medium", row.criticality === "HIGH");
+    }
+  }
+  // Real ITPS (online) inactivity (HPCL's own Online Transactions report) — zero on every one of
+  // the last 2 days on file for that outlet.
+  for (const row of itpsInactiveOutlets()) {
+    const outlet = store.outlets.get(row.outletId);
+    if (!outlet) continue;
+    const title = `No ITPS transactions in ${row.days} days — ${outlet.name}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(
+        outlet,
+        title,
+        `${outlet.name}: zero ITPS (online) transactions on ${row.lastDates.join(" and ")} — check if the online payment terminal is down.`,
+        "Medium",
+        true,
+      );
+    }
+  }
+  // Overdue Minutes of Meeting action points (recorded on the outlet page and in Module 7's
+  // Dealer Request Desk) — a real due date that's passed with the item still not Done belongs on
+  // the Cockpit's due-tasks list, not just sitting quietly on the outlet's own MOM log.
+  const today = new Date().toISOString().slice(0, 10);
+  for (const ap of store.actionPoints.values()) {
+    if (!ap.dueDate || ap.status === "Done" || ap.dueDate >= today) continue;
+    const outlet = store.outlets.get(ap.outletId);
+    if (!outlet) continue;
+    const title = `Overdue MOM action point — ${ap.title}`;
+    if (!hasOpenTask(outlet.id, title)) {
+      createOutletTask(
+        outlet,
+        title,
+        `${outlet.name}: MOM action point "${ap.title}" (raised by ${ap.raisedBy}${ap.owner ? `, owner ${ap.owner}` : ""}) was due ${ap.dueDate} and is still ${ap.status}.`,
+        "High",
+        true,
+      );
+    }
+  }
+}
+
+/** Finds an outlet mentioned by name in free text — used by askAnalytics for outlet-specific intents. */
+function matchOutletInText(text: string): Outlet | undefined {
+  const lower = text.toLowerCase();
+  let best: Outlet | undefined;
+  for (const outlet of store.visibleOutlets()) {
+    if (lower.includes(outlet.name.toLowerCase())) {
+      if (!best || outlet.name.length > best.name.length) best = outlet;
+    }
+  }
+  return best;
+}
+
 /** "Ask anything" analytical query — rule-based intent matching over the SO's most common questions. */
 export async function askAnalytics(question: string): Promise<AnalyticsAnswer> {
   const q = question.toLowerCase();
   let resultSummary: string;
   let matchedOutletIds: string[] = [];
+  const mentionedOutlet = matchOutletInText(question);
 
-  if (q.includes("below") && (q.includes("ta") || q.includes("trading area"))) {
+  if (q.includes("peak") && (q.includes("hour") || q.includes("time"))) {
+    if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+      const peak = peakHour(mentionedOutlet.id, 7)!;
+      matchedOutletIds = [mentionedOutlet.id];
+      resultSummary = `${mentionedOutlet.name}: peak hour is ${peak.hour}:00-${peak.hour + 1}:00 with ${peak.transactions} transactions (real DU transaction log).`;
+    } else if (mentionedOutlet) {
+      resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't determine peak hours. Upload one via the Input Tap on the Outlet Repository page.`;
+    } else {
+      const withData = store.visibleOutlets().filter((o) => hasTrafficData(o.id));
+      resultSummary = withData.length
+        ? `Peak-hour analysis is available for: ${withData.map((o) => o.name).join(", ")}. Ask "peak hour at <outlet name>".`
+        : `No outlet has DU transaction data uploaded yet — nothing to compute peak hours from.`;
+    }
+  } else if (q.includes("du") || q.includes("nozzle") || q.includes("dispensing unit") || q.includes("pump")) {
+    if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+      const nozzles = nozzleStatusForOutlet(mentionedOutlet.id);
+      const inactive = nozzles.filter((n) => n.possiblyInactive);
+      matchedOutletIds = [mentionedOutlet.id];
+      resultSummary = inactive.length
+        ? `${mentionedOutlet.name}: ${inactive.length} of ${nozzles.length} DU(s) look inactive — ${inactive.map((n) => `Pump ${n.pumpNo}/Nozzle ${n.nozzleNo} (last transaction ${n.lastTransactionAt.slice(0, 10)})`).join(", ")}. The rest are transacting normally.`
+        : `${mentionedOutlet.name}: all ${nozzles.length} DU(s) show recent transactions — no inactivity detected in the real transaction log.`;
+    } else if (mentionedOutlet) {
+      resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't assess DU status.`;
+    } else {
+      const flagged = outletsWithInactiveNozzles();
+      resultSummary = flagged.length
+        ? `${flagged.length} outlet(s) have a possibly-inactive DU: ${flagged.map((f) => store.outlets.get(f.outletId)?.name ?? f.outletId).join(", ")}.`
+        : `No possibly-inactive DUs detected across outlets with transaction data on file.`;
+    }
+  } else if (q.includes("traffic") || q.includes("vehicle") || q.includes("wheeler") || q.includes("hmv") || q.includes("bowser")) {
+    if (mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+      const { perDay, daysAveraged } = vehicleTypeAverages(mentionedOutlet.id, 7);
+      matchedOutletIds = [mentionedOutlet.id];
+      resultSummary = `${mentionedOutlet.name} traffic pattern — daily average over the last ${daysAveraged} day(s) (real DU log): ${(Object.keys(perDay) as VehicleType[]).map((vt) => `${VEHICLE_TYPE_LABELS[vt]} ${perDay[vt].transactions.toFixed(1)} txns/day (${perDay[vt].volumeKL.toFixed(2)} KL/day)`).join(", ")}.`;
+    } else if (mentionedOutlet) {
+      resultSummary = `No DU transaction data uploaded for ${mentionedOutlet.name} yet — can't show a traffic pattern. Upload one via the Input Tap.`;
+    } else {
+      const withData = store.visibleOutlets().filter((o) => hasTrafficData(o.id));
+      resultSummary = withData.length
+        ? `Traffic-pattern data is available for: ${withData.map((o) => o.name).join(", ")}. Ask "traffic pattern at <outlet name>".`
+        : `No outlet has DU transaction data uploaded yet.`;
+    }
+  } else if ((q.includes("fuel") || q.includes("ms") || q.includes("hsd")) && (q.includes("pattern") || q.includes("trend")) && mentionedOutlet && hasTrafficData(mentionedOutlet.id)) {
+    const { perDay, daysAveraged } = productAverages(mentionedOutlet.id, 7);
+    matchedOutletIds = [mentionedOutlet.id];
+    resultSummary = `${mentionedOutlet.name} fuel sales pattern — daily average over the last ${daysAveraged} day(s) (real DU log): ${Object.entries(perDay).map(([p, c]) => `${p} — ${c.transactions.toFixed(1)} txns/day, ${c.volumeKL.toFixed(2)} KL/day, Rs ${Math.round(c.amountRs).toLocaleString("en-IN")}/day`).join("; ")}.`;
+  } else if (q.includes("below") && (q.includes("ta") || q.includes("trading area"))) {
     const rows = outletsBelowTA();
     matchedOutletIds = rows.map((r) => r.outlet.id);
+    const worst = rows.slice(0, 3);
     resultSummary = rows.length
-      ? `${rows.length} outlet(s) below TA average: ${rows.map((r) => `${r.outlet.name} (${r.actualKL} KL vs TA ${r.taAverageKL} KL)`).join("; ")}.`
-      : "No outlets currently below their TA average.";
+      ? `${rows.length} outlet(s) below their trading area's real average — worst ${worst.length}: ${worst.map((r) => `${r.outlet.name} (${r.volumeKL} KL vs ${r.tradingAreaName} average ${r.tradingAreaAverageKL} KL, ${r.pctOfAverage}%)`).join("; ")}.`
+      : "No outlets currently below their trading area's real average.";
   } else if (q.includes("dry")) {
     const rows = dryOutletsToday();
     matchedOutletIds = rows.map((o) => o.id);

@@ -1,3 +1,7 @@
 node_modules/
 dist/
 *.log
+data/uploads/
+retail-setu-standalone.html
+Modernisation_Request_Workflow.pdf
+__pycache__/

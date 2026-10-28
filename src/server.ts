@@ -13,7 +13,10 @@ import { registerCockpitRoutes } from "./routes/cockpit.js";
 import { registerKnowledgeRoutes } from "./routes/knowledge.js";
 import { registerKmlRoutes } from "./routes/kml.js";
 import { registerDealerDeskRoutes } from "./routes/dealerDesk.js";
+import { registerDataUploadRoutes } from "./routes/dataUpload.js";
+import { registerTradingAreaRoutes } from "./routes/tradingAreas.js";
 import { getAiEngine } from "./services/aiEngine.js";
+import { applyPersistedOverridesOnStartup } from "./services/dataUpload.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -28,6 +31,10 @@ registerCockpitRoutes(router);
 registerKnowledgeRoutes(router);
 registerKmlRoutes(router);
 registerDealerDeskRoutes(router);
+registerDataUploadRoutes(router);
+registerTradingAreaRoutes(router);
+
+applyPersistedOverridesOnStartup();
 
 router.get("/api/health", (_req, res) => {
   sendJson(res, 200, { status: "ok", aiEngine: getAiEngine().name, time: new Date().toISOString() });

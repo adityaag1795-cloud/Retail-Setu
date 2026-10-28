@@ -5,19 +5,27 @@ import type {
   ApplicationForm,
   AscResult,
   AscRecommendation,
+  AscAnswer,
   LecResult,
   FvcResult,
   YesNo,
-  MilestoneKey,
   MilestoneStatus,
   GanttTask,
   Outlet,
-  CanopyRequest,
+  FeasibilityReportForm,
+  LoiFileNoteForm,
+  IrrAssumptions,
+  BudgetApproval,
+  CostEstimate,
 } from "../types.js";
 import { store, nextId, freshMilestones } from "../store.js";
 import { getAiEngine } from "./aiEngine.js";
 import { matchClauses } from "./policyBot.js";
 import { ASC_CHECKLIST_TEMPLATE, LEC_EVALUATION_TEMPLATE, FVC_ITEMS_TEMPLATE, formatAscReport, formatLecReport, formatFvcReport } from "./dsgForms.js";
+import { extractApplicationFormFields, extractRawTextFromUpload, type ExtractionResult } from "./formExtraction.js";
+import { defaultFeasibilityReportForm, renderFeasibilityReportText } from "./feasibilityReport.js";
+import { defaultLoiFileNoteForm, renderLoiFileNoteText } from "./loiFileNote.js";
+import { buildDefaultNroCostEstimate, recomputeCostEstimate, computeIrr, defaultIrrAssumptions } from "./modernisation.js";
 
 export class WorkflowError extends Error {}
 
@@ -58,6 +66,7 @@ export function createCase(input: {
     competitorContext: input.competitorContext,
     stage: "StretchIdentification",
     createdAt: new Date().toISOString(),
+    interestedApplicants: [],
     roster: [],
     inspections: {},
     milestones: [],
@@ -85,6 +94,26 @@ export function createCase(input: {
     input.stretchName,
   );
   return dealerCase;
+}
+
+// Interested applicants who come forward for a stretch before (or instead of) a formal Application
+// Form intake — a simple record so the SO doesn't lose track of who to follow up with.
+export function addInterestedApplicant(
+  caseId: string,
+  entry: { name: string; stretchName: string; landDetails: string; category: string; mobileNo: string },
+): DealerCase {
+  const c = getCase(caseId);
+  c.interestedApplicants.push({
+    id: nextId("IA"),
+    name: entry.name,
+    stretchName: entry.stretchName || c.stretchName,
+    landDetails: entry.landDetails,
+    category: entry.category,
+    mobileNo: entry.mobileNo,
+    addedAt: new Date().toISOString(),
+  });
+  store.logActivity(c, "SO", "Interested applicant added", entry.name);
+  return c;
 }
 
 // Resitement-only: appoint the technical evaluation committee and generate its report (HQO circular
@@ -126,17 +155,21 @@ export function setRoster(caseId: string, entries: Omit<RosterEntry, "id">[]): D
   return c;
 }
 
-export async function generateFeasibilityReport(caseId: string): Promise<DealerCase> {
+/** Prefill for the feasibility-report form — real trading-area data where on file, blank elsewhere. */
+export function getFeasibilityReportForm(caseId: string): FeasibilityReportForm {
   const c = getCase(caseId);
-  const text = await getAiEngine().generate("feasibilityReport", {
-    stretchName: c.stretchName,
-    competitorContext: c.competitorContext,
-    roster: c.roster,
-  });
-  const feasible = c.roster.some((r) => r.feasible);
+  return c.feasibilityReportForm ?? defaultFeasibilityReportForm(c);
+}
+
+/** Saves the SO's feasibility-report form and renders it in the exact real HPCL document format. */
+export function saveFeasibilityReportForm(caseId: string, form: FeasibilityReportForm): DealerCase {
+  const c = getCase(caseId);
+  c.feasibilityReportForm = form;
+  const text = renderFeasibilityReportText(form);
+  const feasible = form.feasibleAsPerVolumeNorms === "Yes";
   c.feasibilityReport = { text, feasible, generatedAt: new Date().toISOString() };
   c.stage = "FeasibilityReport";
-  store.logActivity(c, "AI", "Feasibility report generated", feasible ? "Feasible" : "Not feasible");
+  store.logActivity(c, "SO", "Feasibility report generated", feasible ? "Feasible" : "Not feasible");
   return c;
 }
 
@@ -146,6 +179,49 @@ export function submitApplication(caseId: string, application: ApplicationForm):
   c.application = application;
   c.stage = "ApplicationIntake";
   store.logActivity(c, "SO", "Application form recorded", application.applicantName);
+  return c;
+}
+
+/**
+ * Persists an uploaded Application Form's best-effort extraction result on the case itself (not
+ * just the browser), so an FVC officer/auditor can later see what the intake was based on. Does
+ * NOT submit the ApplicationForm — the SO still reviews and calls submitApplication separately.
+ */
+export function recordApplicationFormUpload(caseId: string, fileName: string, uploadOpts: { text?: string; base64?: string }): { case: DealerCase; extraction: ExtractionResult } {
+  const c = getCase(caseId);
+  const rawText = extractRawTextFromUpload(fileName, uploadOpts);
+  const extraction = extractApplicationFormFields(rawText);
+  c.applicationFormUpload = {
+    fileName,
+    extractedFieldsCount: Object.keys(extraction.fields).length,
+    warnings: extraction.warnings,
+    uploadedAt: new Date().toISOString(),
+  };
+  store.logActivity(c, "SO", "Application form uploaded", `${fileName} — ${c.applicationFormUpload.extractedFieldsCount} field(s) extracted`);
+  return { case: c, extraction };
+}
+
+/**
+ * Attaches a scanned/offline ASC, LEC or FVC report to the case for the record. Unlike the
+ * Application Form upload, this does not attempt field-specific extraction — these three reports
+ * don't share one fixed layout to pattern-match, so guessing checklist answers from arbitrary text
+ * would risk fabricating findings. The real text (where recoverable) is kept as a preview only.
+ */
+export function recordInspectionUpload(
+  caseId: string,
+  kind: "asc" | "lec" | "fvc",
+  fileName: string,
+  uploadOpts: { text?: string; base64?: string },
+): DealerCase {
+  const c = getCase(caseId);
+  const rawText = extractRawTextFromUpload(fileName, uploadOpts);
+  c.inspectionUploads = c.inspectionUploads ?? {};
+  c.inspectionUploads[kind] = {
+    fileName,
+    uploadedAt: new Date().toISOString(),
+    textPreview: rawText.slice(0, 2000),
+  };
+  store.logActivity(c, "SO", `${kind.toUpperCase()} report uploaded`, fileName);
   return c;
 }
 
@@ -160,12 +236,18 @@ function applicationOrThrow(c: DealerCase): ApplicationForm {
 
 export function submitAsc(
   caseId: string,
-  itemAnswers: Record<string, YesNo>,
+  itemAnswers: Record<string, AscAnswer>,
   rectifiableDeficiencies: string[],
   nonRectifiableDeficiencies: string[],
   recommendation: AscRecommendation,
   member1: string,
   member2: string,
+  regionalOfficeName: string,
+  locationSrNo: string,
+  reviewingOfficerName: string,
+  reviewingOfficerDesignation: string,
+  officerInChargeName: string,
+  officerInChargeDesignation: string,
 ): DealerCase {
   const c = getCase(caseId);
   const app = applicationOrThrow(c);
@@ -174,6 +256,7 @@ export function submitAsc(
     applicationFormNo: app.applicationNo,
     applicantName: app.applicantName,
     fatherOrSpouseName: app.fatherOrSpouseName,
+    spouseName: app.spouseName,
     location: c.stretchName,
     district: app.district,
     state: app.state,
@@ -183,8 +266,14 @@ export function submitAsc(
     rectifiableDeficiencies,
     nonRectifiableDeficiencies,
     recommendation,
+    regionalOfficeName,
+    locationSrNo,
     member1,
     member2,
+    reviewingOfficerName,
+    reviewingOfficerDesignation,
+    officerInChargeName,
+    officerInChargeDesignation,
     completedAt: new Date().toISOString(),
     reportText: "",
   };
@@ -286,18 +375,20 @@ export function submitFvc(
   return c;
 }
 
-// Step 5 — AI-generated file note, modelled on HPCL's real "Approved File Note" SAP workflow:
-// a routing chain (Initiation -> Recommendation/Approval) where each stage appends its own
-// timestamped remarks rather than one flat note body.
-export async function generateFileNote(caseId: string): Promise<DealerCase> {
+// Step 5 — File note for LOI, matching a real sample file note exactly (see loiFileNote.ts):
+// advertisement + location details, the case's own selection narrative, ASC confirmation, an
+// activity table, land/site/FVC verification, and an approval ask. Routing chain (Initiation ->
+// Approval) unchanged from the real HPCL "Approved File Note" SAP workflow.
+export function getLoiFileNoteForm(caseId: string): LoiFileNoteForm {
   const c = getCase(caseId);
+  return c.loiFileNoteForm ?? defaultLoiFileNoteForm(c);
+}
+
+export function saveLoiFileNoteForm(caseId: string, form: LoiFileNoteForm): DealerCase {
+  const c = getCase(caseId);
+  c.loiFileNoteForm = form;
   const policyClauses = matchClauses(`${c.stretchName} dealer selection land eligibility financial ASC resitement budget`, 5);
-  const initiationRemarks = await getAiEngine().generate("fileNote", {
-    stretchName: c.stretchName,
-    application: c.application ?? undefined,
-    inspections: c.inspections,
-    policyClauses,
-  });
+  const remarks = renderLoiFileNoteText(form);
   const so = [...store.team.values()].find((t) => t.role === "SO");
   c.fileNote = {
     systemId: nextId("SYS"),
@@ -309,7 +400,7 @@ export async function generateFileNote(caseId: string): Promise<DealerCase> {
         role: "Initiation",
         actorName: so?.name ?? "Sales Officer",
         actorTitle: "Sales Officer",
-        remarks: initiationRemarks,
+        remarks,
         timestamp: new Date().toISOString(),
       },
     ],
@@ -318,7 +409,7 @@ export async function generateFileNote(caseId: string): Promise<DealerCase> {
     generatedAt: new Date().toISOString(),
   };
   c.stage = "FileNoteApproval";
-  store.logActivity(c, "AI", "File note initiated", `${policyClauses.length} clause(s) cited`);
+  store.logActivity(c, "SO", "File note for LOI generated");
   return c;
 }
 
@@ -348,6 +439,10 @@ export async function generateLOI(caseId: string): Promise<DealerCase> {
     applicantName: c.application?.applicantName ?? "Applicant",
     stretchName: c.stretchName,
     salesArea: c.salesArea,
+    district: c.application?.district,
+    state: c.application?.state,
+    category: c.application?.applicantCategory,
+    subCategory: c.application?.typeOfRO,
   });
   c.loi = { text, issuedAt: new Date().toISOString() };
   c.milestones = freshMilestones();
@@ -356,10 +451,20 @@ export async function generateLOI(caseId: string): Promise<DealerCase> {
   return c;
 }
 
-// Step 7 — 2-way milestone tracking through to NOC.
+// Step 7 — 2-way milestone tracking through to NOC. Beyond the fixed six milestones, the SO can
+// add ad-hoc ones (e.g. a specific department's NOC not covered by DeptForwarding) — see
+// addCustomMilestone below.
+export function addCustomMilestone(caseId: string, label: string): DealerCase {
+  const c = getCase(caseId);
+  if (!label.trim()) throw new WorkflowError("Milestone label is required");
+  c.milestones.push({ key: nextId("MS"), label: label.trim(), status: "Pending", custom: true });
+  store.logActivity(c, "SO", "Custom milestone added", label);
+  return c;
+}
+
 export async function updateMilestone(
   caseId: string,
-  key: MilestoneKey,
+  key: string,
   status: MilestoneStatus,
   notes?: string,
   departments?: string[],
@@ -445,24 +550,69 @@ export function syncCustomerMaster(caseId: string): DealerCase {
   return c;
 }
 
-// Step 9 — Budget approval / IRR / cost estimate (AI-generated note).
-export async function generateBudget(caseId: string, costEstimate: number, irr: number): Promise<DealerCase> {
+// Step 9 — Budget approval: same real cost-estimate + IRR engine used for modernisation requests
+// (services/modernisation.ts), combining every rate-card category since a new site needs Civil
+// Works, Driveway, DU, Tank and Electric Panel components together. The SO adjusts qty/rates to
+// the actual site plan and supplies the volume envisaged for the new outlet; IRR is auto-computed
+// from that, never entered as a raw number.
+function budgetOrDefault(c: DealerCase): BudgetApproval {
+  return c.budget ?? { costEstimate: buildDefaultNroCostEstimate(), status: "Draft" };
+}
+
+export function getBudgetCostEstimate(caseId: string): CostEstimate {
+  const c = getCase(caseId);
+  return budgetOrDefault(c).costEstimate;
+}
+
+export function updateBudgetCostEstimateLineItems(caseId: string, lineItems: { id: string; qty: number; rate: number }[]): DealerCase {
   const c = getCase(caseId);
   if (!c.customerMaster) throw new WorkflowError("Customer master must be synced before budget approval");
+  const budget = budgetOrDefault(c);
+  for (const update of lineItems) {
+    const li = budget.costEstimate.lineItems.find((l) => l.id === update.id);
+    if (li) {
+      li.qty = update.qty;
+      li.rate = update.rate;
+    }
+  }
+  budget.costEstimate = recomputeCostEstimate(budget.costEstimate);
+  if (budget.irr) budget.irr = computeIrr(budget.costEstimate, budget.irr.assumptions);
+  c.budget = budget;
+  c.stage = "BudgetApproval";
+  store.logActivity(c, "SO", "NRO cost estimate updated");
+  return c;
+}
+
+export function updateBudgetIrrAssumptions(caseId: string, assumptions: Partial<IrrAssumptions>): DealerCase {
+  const c = getCase(caseId);
+  if (!c.customerMaster) throw new WorkflowError("Customer master must be synced before budget approval");
+  const budget = budgetOrDefault(c);
+  const merged: IrrAssumptions = { ...(budget.irr?.assumptions ?? defaultIrrAssumptions()), ...assumptions };
+  budget.irr = computeIrr(budget.costEstimate, merged);
+  c.budget = budget;
+  c.stage = "BudgetApproval";
+  store.logActivity(c, "SO", "NRO IRR computed", `Volume envisaged ${merged.incrementalVolumeKLPerMonth} KL/month`);
+  return c;
+}
+
+export async function submitBudgetForApproval(caseId: string): Promise<DealerCase> {
+  const c = getCase(caseId);
+  if (!c.budget) throw new WorkflowError("Build the cost estimate before submitting for approval");
+  if (!c.budget.irr) throw new WorkflowError("Compute the IRR (volume envisaged) before submitting for approval");
   const noteText = await getAiEngine().generate("budgetNote", {
-    costEstimate,
-    irr,
+    costEstimate: c.budget.costEstimate.totalInvestment,
+    irr: c.budget.irr.irrPct ?? 0,
     context: `New outlet development — ${c.stretchName}, ${c.salesArea}`,
   });
-  c.budget = { costEstimate, irr, noteText, status: "Submitted" };
-  c.stage = "BudgetApproval";
-  store.logActivity(c, "AI", "Budget approval note generated", `Cost ${costEstimate}, IRR ${irr}%`);
+  c.budget.noteText = noteText;
+  c.budget.status = "Submitted";
+  store.logActivity(c, "AI", "Budget approval note generated", `Cost ${c.budget.costEstimate.totalInvestment}, IRR ${c.budget.irr.irrPct}%`);
   return c;
 }
 
 export function decideBudget(caseId: string, approve: boolean): DealerCase {
   const c = getCase(caseId);
-  if (!c.budget) throw new WorkflowError("Budget note has not been generated yet");
+  if (!c.budget || c.budget.status !== "Submitted") throw new WorkflowError("Budget note has not been submitted for approval yet");
   c.budget.status = approve ? "Approved" : "Rejected";
   c.budget.approvedAt = new Date().toISOString();
   if (approve) {
@@ -557,6 +707,7 @@ export async function commissionCase(caseId: string): Promise<{ dealerCase: Deal
     nozzleSalesStarted: true,
     commissionedDate: new Date().toISOString().slice(0, 10),
     linkedCaseId: c.id,
+    modernisationRequests: [],
   };
   store.outlets.set(outletId, outlet);
   c.outletId = outletId;
@@ -565,114 +716,5 @@ export async function commissionCase(caseId: string): Promise<{ dealerCase: Deal
   return { dealerCase: c, outlet };
 }
 
-// ---------------------------------------------------------------------------
-// Canopy addition sub-workflow — available to ANY operational outlet (not only
-// ones this system happened to commission through a live Module 2 case), since
-// in reality any existing dealership can submit a request-cum-commitment
-// proposal from the portal. Generates both a routing-chain file note and the
-// EAM/RBC-style budget note, matching the pattern used for new-site cases.
-// ---------------------------------------------------------------------------
-
-function outletOrThrow(outletId: string): Outlet {
-  const o = store.outlets.get(outletId);
-  if (!o) throw new WorkflowError(`Outlet ${outletId} not found`);
-  return o;
-}
-
-export function requestCanopy(outletId: string, committedVolumeKL: number, costEstimate: number, irr: number, dealerJustification: string): Outlet {
-  const outlet = outletOrThrow(outletId);
-  if (outlet.status !== "Operational") throw new WorkflowError("Canopy requests are only available for operational outlets");
-  const req: CanopyRequest = {
-    id: nextId("CANOPY"),
-    requestedAt: new Date().toISOString(),
-    committedVolumeKL,
-    costEstimate,
-    irr,
-    dealerJustification,
-    weeklyPerformance: [],
-  };
-  outlet.canopyRequest = req;
-  return outlet;
-}
-
-export async function decideCanopyRequest(
-  outletId: string,
-  decision: "Approved" | "Rejected",
-  justification: string,
-  decidedBy: string,
-): Promise<Outlet> {
-  const outlet = outletOrThrow(outletId);
-  const req = outlet.canopyRequest;
-  if (!req) throw new WorkflowError("No canopy request on this outlet");
-  req.soDecision = { decision, justification, decidedBy, decidedAt: new Date().toISOString() };
-  if (decision === "Approved") {
-    const policyClauses = matchClauses("canopy budget eam corpus fund working capital", 3);
-    const fileNoteRemarks = await getAiEngine().generate("canopyFileNote", {
-      outletName: outlet.name,
-      committedVolumeKL: req.committedVolumeKL,
-      costEstimate: req.costEstimate,
-      irr: req.irr,
-      dealerJustification: req.dealerJustification,
-      policyClauses,
-    });
-    req.fileNote = {
-      systemId: nextId("SYS"),
-      initiatedOn: new Date().toISOString().slice(0, 10),
-      subject: `Approval for canopy addition — ${outlet.name}`,
-      routing: [
-        {
-          id: nextId("RT"),
-          role: "Initiation",
-          actorName: decidedBy,
-          actorTitle: "Sales Officer",
-          remarks: fileNoteRemarks,
-          timestamp: new Date().toISOString(),
-        },
-        {
-          id: nextId("RT"),
-          role: "Approval",
-          actorName: decidedBy,
-          actorTitle: "Sales Officer",
-          remarks: justification || "Approved.",
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      policyClausesCited: policyClauses.map((p) => `${p.documentTitle} ${p.clauseNumber}`),
-      status: "Approved",
-      generatedAt: new Date().toISOString(),
-    };
-    req.budgetNoteText = await getAiEngine().generate("canopyBudgetNote", {
-      outletName: outlet.name,
-      committedVolumeKL: req.committedVolumeKL,
-      costEstimate: req.costEstimate,
-      irr: req.irr,
-      dealerJustification: req.dealerJustification,
-    });
-    req.eamStatus = "Pending";
-    req.projectTimeline = buildGanttTasks(new Date()).slice(0, 3); // canopy build is a lighter project
-  }
-  return outlet;
-}
-
-export function decideCanopyEAM(outletId: string, approve: boolean): Outlet {
-  const outlet = outletOrThrow(outletId);
-  if (!outlet.canopyRequest) throw new WorkflowError("No canopy request on this outlet");
-  outlet.canopyRequest.eamStatus = approve ? "Approved" : "Rejected";
-  if (approve) outlet.canopy = true;
-  return outlet;
-}
-
-/** Weekly job: compares committed vs actual volume and records whether the dealer is on track. */
-export function recordWeeklyCanopyPerformance(outletId: string, actualKL: number): Outlet {
-  const outlet = outletOrThrow(outletId);
-  if (!outlet.canopyRequest) throw new WorkflowError("No canopy request on this outlet");
-  const weekOf = new Date().toISOString().slice(0, 10);
-  outlet.canopyRequest.weeklyPerformance.push({
-    weekOf,
-    committedKL: outlet.canopyRequest.committedVolumeKL,
-    actualKL,
-    onTrack: actualKL >= outlet.canopyRequest.committedVolumeKL * 0.9,
-    emailSent: true,
-  });
-  return outlet;
-}
+// Modernisation Request sub-workflow (Canopy/Driveway/DU/Tank/Electric Panel) now lives in
+// services/modernisation.ts — initiated via Module 7, reviewed here on the outlet.

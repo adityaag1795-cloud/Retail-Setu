@@ -1,15 +1,18 @@
 :root {
-  --bg: #0f1420;
-  --panel: #171e2e;
-  --panel-2: #1e2740;
-  --text: #e7ebf3;
-  --muted: #97a2b8;
-  --accent: #4f8cff;
-  --accent-2: #35c48c;
-  --danger: #ff5d5d;
-  --warn: #ffb547;
-  --border: #2a3350;
+  /* HPCL-style white & blue theme — presentation-ready for management review. */
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #eaf2fb;
+  --text: #0b2c58;
+  --muted: #5b7ca8;
+  --accent: #0057a8;
+  --accent-2: #147a4d;
+  --danger: #c62828;
+  --warn: #b8730f;
+  --border: #cddef2;
   --radius: 10px;
+  --brand: #003d80;
+  --brand-text: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -21,19 +24,26 @@ body {
   color: var(--text);
 }
 
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--brand);
+  color: var(--brand-text);
 }
-.topbar__brand { font-size: 1.15rem; font-weight: 600; }
+.topbar__brand { font-size: 1.15rem; font-weight: 600; color: var(--brand-text); }
+.topbar__brand .muted { color: #bcd6f2; }
 .ai-badge {
   font-size: 0.8rem;
-  color: var(--accent-2);
-  border: 1px solid var(--border);
+  color: #d6ebff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 999px;
   padding: 4px 12px;
 }
@@ -47,7 +57,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .nav-link {
-  color: var(--muted);
+  color: var(--accent);
   text-decoration: none;
   padding: 8px 14px;
   border-radius: 999px;
@@ -65,6 +75,8 @@ body {
   padding: 24px;
 }
 .panel--error { color: var(--danger); }
+.text--up { color: var(--accent-2); font-weight: 600; }
+.text--down { color: var(--danger); font-weight: 600; }
 
 h2 { margin-top: 0; }
 h3 { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 16px; }
@@ -99,23 +111,60 @@ a { color: var(--accent); }
   border: 1px solid var(--border);
 }
 .badge--stage { background: var(--accent); color: white; border: none; }
-.badge--done { background: var(--accent-2); color: #06251a; border: none; }
+.badge--done { background: var(--accent-2); color: white; border: none; }
 .badge--stuck { background: var(--danger); color: white; border: none; }
-.badge--pending { background: var(--panel); }
-.badge--inprogress { background: var(--warn); color: #3a2400; border: none; }
+.badge--pending { background: var(--panel-2); }
+.badge--inprogress { background: var(--warn); color: white; border: none; }
 
 /* Module 7 — Dealer Request Desk */
 .badge--critical { background: var(--danger); color: white; border: none; }
-.badge--high { background: var(--warn); color: #3a2400; border: none; }
+.badge--high { background: var(--warn); color: white; border: none; }
 .badge--medium { background: var(--accent); color: white; border: none; }
-.badge--low { background: var(--panel); }
-.badge--open { background: var(--panel); }
-.badge--resolved { background: var(--accent-2); color: #06251a; border: none; }
+.badge--low { background: var(--panel-2); }
+.badge--open { background: var(--panel-2); }
+.badge--resolved { background: var(--accent-2); color: white; border: none; }
 .badge--escalated { background: var(--danger); color: white; border: none; }
 
-.table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
-.table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.table th { color: var(--muted); font-weight: 600; width: 220px; }
+/* Module 7 — SO-assigned priority (separate from the rule-engine criticality above) */
+.badge--highlycritical { background: var(--danger); color: white; border: none; }
+.badge--highimportance { background: var(--warn); color: white; border: none; }
+.badge--mediumimportance { background: var(--accent); color: white; border: none; }
+.badge--lowimportance { background: var(--panel-2); }
+
+.table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; border: 1px solid var(--border); }
+.table th, .table td { text-align: left; padding: 8px 10px; border: 1px solid var(--border); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 600; width: 220px; background: var(--panel-2); }
+
+.chart {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px 4px;
+  background: var(--panel);
+}
+.chart svg { display: block; }
+.chart__legend { display: flex; flex-wrap: wrap; justify-content: center; padding: 4px 0 8px; }
+
+.gantt-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.gantt-row__label { width: 260px; flex: 0 0 auto; font-size: 0.85rem; }
+.gantt-row__label .badge { margin-left: 6px; }
+.gantt-row__track { flex: 1 1 auto; position: relative; height: 22px; background: var(--panel-2); border-radius: 4px; }
+.gantt-bar {
+  position: absolute;
+  top: 2px;
+  height: 18px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 0.72rem;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.gantt-bar--critical { outline: 2px solid var(--text); outline-offset: 1px; }
+.gantt-axis { display: flex; margin-left: 270px; font-size: 0.75rem; color: var(--muted); justify-content: space-between; margin-top: 4px; }
 
 .form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; max-width: 560px; }
 .form--inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
@@ -148,14 +197,21 @@ a { color: var(--accent); }
 .btn[disabled] { opacity: 0.4; cursor: not-allowed; }
 
 .ai-output {
-  background: #0b1830;
+  background: #f4f9ff;
   border: 1px dashed var(--accent);
   border-radius: 8px;
   padding: 14px;
   white-space: pre-wrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.85rem;
+  line-height: 1.6em;
   margin-top: 10px;
+  color: var(--text);
+  /* Reports (feasibility, ASC/LEC/FVC, file notes, etc.) are plain preformatted text with
+     column-aligned tables baked into the string — ruled lines make that alignment readable
+     without rewriting every generator into real HTML tables. */
+  background-image: repeating-linear-gradient(to bottom, rgba(0, 61, 128, 0.1) 0, rgba(0, 61, 128, 0.1) 1px, transparent 1px, transparent 1.6em);
+  background-position: 0 14px;
 }
 
 .log { list-style: none; padding: 0; font-size: 0.85rem; }
@@ -181,6 +237,8 @@ a { color: var(--accent); }
 .quadrant--Schedule { border-left: 4px solid var(--accent); }
 .quadrant--Delegate { border-left: 4px solid var(--warn); }
 .quadrant--Eliminate { border-left: 4px solid var(--muted); }
+
+.tour-compact { margin: 6px 0 0; padding-left: 18px; font-size: 0.85rem; line-height: 1.6; }
 
 .inspection {
   background: var(--panel-2);
@@ -209,12 +267,12 @@ a { color: var(--accent); }
   z-index: 999;
 }
 .toast {
-  background: var(--panel-2);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 16px;
   font-size: 0.85rem;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 61, 128, 0.18);
 }
 .toast--error { border-color: var(--danger); color: var(--danger); }
 

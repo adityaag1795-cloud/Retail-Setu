@@ -44,6 +44,18 @@ export function registerDealerDeskRoutes(router: Router) {
     sendJson(res, 200, await wrap(() => dd.addSoResponse(params["id"]!, body.responderName, body.text, body.status)));
   });
 
+  router.post("/api/dealer-requests/:id/priority", async (req, res, params) => {
+    const body = await readJsonBody<{ soPriority: Parameters<typeof dd.setSoPriority>[1]; setBy: string }>(req);
+    if (!body.soPriority || !body.setBy) throw new ApiError(400, "soPriority and setBy are required");
+    sendJson(res, 200, await wrap(() => dd.setSoPriority(params["id"]!, body.soPriority, body.setBy)));
+  });
+
+  router.post("/api/dealer-requests/:id/forward", async (req, res, params) => {
+    const body = await readJsonBody<{ stakeholders: Parameters<typeof dd.forwardRequest>[1]; forwardedBy: string; note?: string }>(req);
+    if (!body.stakeholders?.length || !body.forwardedBy) throw new ApiError(400, "stakeholders (non-empty) and forwardedBy are required");
+    sendJson(res, 200, await wrap(() => dd.forwardRequest(params["id"]!, body.stakeholders, body.forwardedBy, body.note)));
+  });
+
   router.post("/api/dealer-requests/:id/escalate", async (req, res, params) => {
     const body = await readJsonBody<{ escalatedBy: string; reason: string }>(req);
     if (!body.escalatedBy || !body.reason) throw new ApiError(400, "escalatedBy and reason are required");

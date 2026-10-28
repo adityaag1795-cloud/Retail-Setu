@@ -13,6 +13,14 @@ import type {
   Milestone,
   MilestoneKey,
   ActivityEntry,
+  DailyTrafficSummary,
+  NozzleActivity,
+  ActionPoint,
+  TradingAreaSnapshot,
+  OutletDataNote,
+  EnergyManualEntry,
+  OutletCriticalityMonitor,
+  ItpsTransactionDay,
 } from "./types.js";
 import {
   seedOutlets,
@@ -23,7 +31,11 @@ import {
   seedPolicyClauses,
   seedDealerCases,
   seedDealerRequests,
+  seedTradingAreas,
 } from "./data/seed.js";
+import { SEED_DAILY_TRAFFIC, SEED_NOZZLE_ACTIVITY } from "./data/trafficData.js";
+import { SEED_OUTLET_CRITICALITY } from "./data/outletCriticalityData.js";
+import { SEED_ITPS_TRANSACTIONS } from "./data/itpsTransactionData.js";
 
 let counter = 10000;
 export function nextId(prefix: string): string {
@@ -32,6 +44,7 @@ export function nextId(prefix: string): string {
 }
 
 export const MILESTONE_TEMPLATE: { key: MilestoneKey; label: string }[] = [
+  { key: "OfferLetter", label: "Offer Letter taken from LOI holder" },
   { key: "MapSubmission", label: "Submission of site map" },
   { key: "DrawingAndDMLetter", label: "Submission of drawing & letter by company to District Magistrate" },
   { key: "PESOApplication", label: "PESO application filed" },
@@ -56,16 +69,32 @@ class Store {
   policyClauses = new Map<string, PolicyClause>();
   dealerCases = new Map<string, DealerCase>();
   dealerRequests = new Map<string, DealerRequest>();
+  dailyTraffic: DailyTrafficSummary[] = [];
+  nozzleActivity: NozzleActivity[] = [];
+  actionPoints = new Map<string, ActionPoint>();
+  tradingAreas = new Map<string, TradingAreaSnapshot>();
+  outletDataNotes = new Map<string, OutletDataNote>();
+  /** SO's manual fallback entries for the daily energy-news/crude-rate cockpit column — used when the live fetch fails. */
+  energyManualEntries: EnergyManualEntry[] = [];
+  /** Real per-outlet dry-risk/indent/funds status from HPCL's own Outlet Criticality Monitor workbook. */
+  criticalityMonitor: OutletCriticalityMonitor[] = [];
+  /** Real day-wise ITPS (online) transaction counts from HPCL's own Online Transactions report. */
+  itpsTransactions: ItpsTransactionDay[] = [];
 
   constructor() {
     seedOutlets.forEach((o) => this.outlets.set(o.id, o));
     seedCommunications.forEach((c) => this.communications.set(c.id, c));
     this.salesRecords = [...seedSalesRecords];
     this.stockSnapshots = [...seedStockSnapshots];
+    this.criticalityMonitor = [...SEED_OUTLET_CRITICALITY];
+    this.itpsTransactions = [...SEED_ITPS_TRANSACTIONS];
+    this.dailyTraffic = [...SEED_DAILY_TRAFFIC];
+    this.nozzleActivity = [...SEED_NOZZLE_ACTIVITY];
     seedTeam.forEach((t) => this.team.set(t.id, t));
     seedPolicyClauses.forEach((p) => this.policyClauses.set(p.id, p));
     seedDealerCases.forEach((c) => this.dealerCases.set(c.id, c));
     seedDealerRequests.forEach((r) => this.dealerRequests.set(r.id, r));
+    seedTradingAreas.forEach((t) => this.tradingAreas.set(t.id, t));
     this.seedDerivedTasks();
   }
 
@@ -88,8 +117,111 @@ class Store {
         linkedRecordId: "OUT-41014421",
         createdAt: new Date().toISOString(),
       },
+      {
+        id: nextId("TASK"),
+        title: "Close CRM complaint",
+        description: "Complaint due for closure by 27.07.2026 — visit the CRM portal to close it out.",
+        assignedTo: so.id,
+        assignedBy: ro.id,
+        dueDate: "2026-07-27",
+        status: "Open",
+        priority: "Medium",
+        urgent: false,
+        important: true,
+        externalUrl: "https://rishte.hpcl.co.in",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: nextId("TASK"),
+        title: "HP Service Centre - Faridabad — Google rating dropped to 2",
+        description: "Outlet's Google Business listing is showing a rating of 2 — review recent customer feedback on the Single Interface dashboard and respond/action as needed.",
+        assignedTo: so.id,
+        assignedBy: ro.id,
+        dueDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        status: "Open",
+        priority: "Medium",
+        urgent: false,
+        important: true,
+        linkedModule: "Outlet",
+        linkedRecordId: "OUT-41068065",
+        externalUrl: "https://backend-dashboard.singleinterface.com/pages/index.html",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: nextId("TASK"),
+        title: "Sales forecast submission deadline",
+        description: "Sales forecast for the sales area is due 28.07.2026 — submit via the Demand Forecast portal.",
+        assignedTo: so.id,
+        assignedBy: ro.id,
+        dueDate: "2026-07-28",
+        status: "Open",
+        priority: "Medium",
+        urgent: false,
+        important: true,
+        externalUrl: "https://df.hpcl.co.in/SASVisualAnalytics/",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: nextId("TASK"),
+        title: "Weekly DSO-Dealer review meeting",
+        description: "Regular meeting by the DSO with dealers in the sales area — recurring weekly review, not tied to a single outlet.",
+        assignedTo: so.id,
+        assignedBy: ro.id,
+        dueDate: "2026-07-23",
+        status: "Open",
+        priority: "Low",
+        urgent: true,
+        important: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: nextId("TASK"),
+        title: "Read latest EAM/DSG circular updates",
+        description: "General awareness reading — no action item tied to a specific case or outlet.",
+        assignedTo: so.id,
+        assignedBy: ro.id,
+        dueDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+        status: "Open",
+        priority: "Low",
+        urgent: false,
+        important: false,
+        linkedModule: "Knowledge",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: nextId("TASK"),
+        title: "Update outlet signage/branding photo archive",
+        description: "Housekeeping — refresh the photo record of outlet frontage/signage for the sales area.",
+        assignedTo: so.id,
+        assignedBy: ro.id,
+        dueDate: new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10),
+        status: "Open",
+        priority: "Low",
+        urgent: false,
+        important: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: nextId("TASK"),
+        title: "Review closed dealer-request log for recurring patterns",
+        description: "Retrospective housekeeping — skim closed Module 7 requests for repeat complaint types worth flagging.",
+        assignedTo: so.id,
+        assignedBy: ro.id,
+        dueDate: new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10),
+        status: "Open",
+        priority: "Low",
+        urgent: false,
+        important: false,
+        linkedModule: "DealerRequest",
+        createdAt: new Date().toISOString(),
+      },
     ];
     tasks.forEach((t) => this.tasks.set(t.id, t));
+  }
+
+  /** Outlets curated into the prototype's demo set — every "list all outlets" surface should use this, not the raw map, so hidden outlets stay reachable by direct ID (e.g. a Module 2 case link) without appearing in any listing. */
+  visibleOutlets(): Outlet[] {
+    return [...this.outlets.values()].filter((o) => !o.hiddenInPrototype);
   }
 
   logActivity(dealerCase: DealerCase, actor: string, action: string, details?: string) {
